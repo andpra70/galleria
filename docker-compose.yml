@@ -1,0 +1,9 @@
+services:
+  galleria:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: galleria-virtuale
+    ports:
+      - "6060:80"
+    restart: unless-stopped

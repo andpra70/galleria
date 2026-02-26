@@ -1,0 +1,482 @@
+:root {
+  --bg: #dfe3e8;
+  --panel-bg: rgba(17, 24, 39, 0.78);
+  --panel-text: #f9fafb;
+  --map-bg: rgba(255, 255, 255, 0.86);
+  --map-border: rgba(17, 24, 39, 0.35);
+  --card-bg: rgba(255, 255, 255, 0.96);
+  --card-border: rgba(15, 23, 42, 0.18);
+  --card-text: #1f2937;
+  --minimap-height: 120px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: radial-gradient(circle at 20% 10%, #f8fafc, var(--bg));
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+#scene {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+#hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+#drag-measure-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 3;
+  overflow: visible;
+}
+
+#panel {
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  z-index: 5;
+  pointer-events: auto;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--panel-bg);
+  color: var(--panel-text);
+  width: min(360px, calc(100vw - 32px));
+  backdrop-filter: blur(2px);
+}
+
+#panel.drop-target {
+  outline: 2px dashed rgba(134, 239, 172, 0.95);
+  outline-offset: 2px;
+}
+
+#panel h1 {
+  margin: 0 0 8px;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+#panel p {
+  margin: 4px 0;
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+
+#save-show-json {
+  margin-top: 8px;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  background: #0f766e;
+  color: #ffffff;
+}
+
+#minimap {
+  position: absolute;
+  display: block;
+  left: auto;
+  right: 16px;
+  width: calc((100vw - 48px) * 0.5);
+  top: 16px;
+  z-index: 2;
+  pointer-events: auto;
+  height: var(--minimap-height, 120px);
+  border-radius: 10px;
+  border: 1px solid var(--map-border);
+  background: var(--map-bg);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.14);
+  max-width: calc(100vw - 32px);
+}
+
+#map-tools {
+  position: absolute;
+  left: auto;
+  right: 16px;
+  width: calc((100vw - 48px) * 0.5);
+  top: calc(16px + var(--minimap-height, 120px) + 10px);
+  z-index: 2;
+  pointer-events: auto;
+  display: flex;
+  justify-content: flex-end;
+}
+
+#edit-mode-toggle {
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  background: #0f172a;
+  color: #ffffff;
+}
+
+#edit-mode-toggle.edit-on {
+  background: #166534;
+}
+
+#art-card {
+  pointer-events: auto;
+  position: absolute;
+  z-index: 4;
+  inset: 4%;
+  transform: none;
+  width: auto;
+  max-height: none;
+  overflow: auto;
+  border-radius: 12px;
+  border: 1px solid var(--card-border);
+  background: var(--card-bg);
+  color: var(--card-text);
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.22);
+  padding: 12px 12px 14px;
+}
+
+#filmstrip {
+  pointer-events: auto;
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 10px;
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+#filmstrip[hidden] {
+  display: none;
+}
+
+#filmstrip-items {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 6px;
+  border-radius: 10px;
+  border: 1px solid rgba(15, 23, 42, 0.24);
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.filmstrip-item {
+  flex: 0 0 128px;
+  position: relative;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 6px;
+  cursor: pointer;
+  display: grid;
+  gap: 4px;
+}
+
+.filmstrip-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: rgba(15, 23, 42, 0.84);
+  color: #ffffff;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+}
+
+.filmstrip-remove:hover {
+  background: rgba(185, 28, 28, 0.92);
+}
+
+.filmstrip-item.selected {
+  border-color: #0f766e;
+  box-shadow: 0 0 0 1px rgba(15, 118, 110, 0.2);
+}
+
+.filmstrip-item.unplaced {
+  opacity: 0.7;
+}
+
+.filmstrip-item img {
+  width: 100%;
+  height: 72px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: #e5e7eb;
+  margin-top: 2px;
+}
+
+.filmstrip-item .filmstrip-title {
+  font-size: 0.75rem;
+  line-height: 1.2;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#filmstrip-add {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 10px;
+  padding: 0 12px;
+  font-size: 0.84rem;
+  background: #0f766e;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+#art-card[hidden] {
+  display: none;
+}
+
+#art-card-close {
+  pointer-events: auto;
+  position: sticky;
+  top: 0;
+  float: right;
+  border: 0;
+  border-radius: 999px;
+  width: 30px;
+  height: 30px;
+  background: #111827;
+  color: #ffffff;
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+#art-card-image {
+  width: 100%;
+  height: auto;
+  max-height: 220px;
+  object-fit: contain;
+  object-position: center;
+  border-radius: 8px;
+  display: block;
+  margin-bottom: 10px;
+  background: #f3f4f6;
+}
+
+#art-card-image.image-drop-target {
+  outline: 3px dashed #166534;
+  outline-offset: 2px;
+  background: #ecfdf5;
+}
+
+#art-card-title {
+  margin: 0 0 8px;
+  font-size: 1.08rem;
+}
+
+#art-card-description {
+  margin: 0 0 10px;
+  font-size: 0.92rem;
+  line-height: 1.4;
+}
+
+#art-card-synoptic {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+#art-edit-move-left,
+#art-edit-move-right,
+#art-edit-move-up,
+#art-edit-move-down,
+#art-edit-delete {
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.84rem;
+  cursor: pointer;
+}
+
+#art-edit-move-left,
+#art-edit-move-right,
+#art-edit-move-up,
+#art-edit-move-down {
+  background: #334155;
+  color: #ffffff;
+}
+
+#art-edit-delete {
+  background: #b91c1c;
+  color: #ffffff;
+}
+
+#art-edit-move-left:disabled,
+#art-edit-move-right:disabled,
+#art-edit-move-up:disabled,
+#art-edit-move-down:disabled,
+#art-edit-delete:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+#art-edit-panel {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(15, 23, 42, 0.1);
+  display: grid;
+  gap: 6px;
+}
+
+#art-edit-panel[hidden] {
+  display: none;
+}
+
+.edit-field {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #334155;
+}
+
+#art-edit-panel input[type="number"],
+#art-edit-panel input[type="text"],
+#art-edit-panel select,
+#art-edit-panel textarea {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid rgba(15, 23, 42, 0.2);
+  padding: 7px 8px;
+  font-size: 0.84rem;
+  background: #ffffff;
+  font-family: inherit;
+}
+
+#art-edit-panel input[readonly] {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+#art-edit-synopsis-list {
+  display: grid;
+  gap: 6px;
+}
+
+.synopsis-edit-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 6px;
+}
+
+.synopsis-edit-row button {
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 8px;
+  font-size: 0.78rem;
+  background: #475569;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+#art-edit-synopsis-add {
+  justify-self: start;
+  border: 0;
+  border-radius: 8px;
+  padding: 7px 9px;
+  font-size: 0.8rem;
+  background: #0f766e;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+#art-edit-actions {
+  margin-top: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.synoptic-row {
+  display: grid;
+  grid-template-columns: 130px 1fr;
+  gap: 8px;
+  border-top: 1px solid rgba(15, 23, 42, 0.1);
+  padding-top: 6px;
+  font-size: 0.85rem;
+}
+
+.synoptic-row strong {
+  color: #0f172a;
+}
+
+@media (max-width: 820px) {
+  :root {
+    --minimap-height: 96px;
+  }
+
+  #panel {
+    max-width: 88vw;
+    left: 10px;
+    top: 10px;
+    padding: 10px 11px;
+  }
+
+  #panel h1 {
+    font-size: 1rem;
+  }
+
+  #panel p {
+    font-size: 0.78rem;
+  }
+
+  #minimap {
+    left: 10px;
+    right: 10px;
+    top: 10px;
+    width: auto;
+    height: var(--minimap-height, 96px);
+  }
+
+  #map-tools {
+    left: 10px;
+    right: 10px;
+    top: calc(10px + var(--minimap-height, 96px) + 8px);
+    width: auto;
+  }
+
+  #art-card {
+    inset: 4%;
+  }
+
+  #filmstrip {
+    left: 10px;
+    right: 10px;
+    bottom: 6px;
+  }
+
+  .filmstrip-item {
+    flex-basis: 108px;
+  }
+
+  .synoptic-row {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}

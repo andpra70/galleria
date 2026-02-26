@@ -1,0 +1,720 @@
+{
+  "visitor": {
+    "start": {
+      "x": -15,
+      "z": -5,
+      "yaw": 0.2
+    },
+    "eyeHeight": 1.67,
+    "moveSpeed": 2.3,
+    "initialSpeedScale": 1.45,
+    "wallClearance": 0.5,
+    "minPaintingDistance": 1.35,
+    "navCellSize": 0.4
+  },
+  "rendering": {
+    "ceilingColor": "#ffffff",
+    "wallColor": "#ffffff",
+    "floorColor": "#eeeeee",
+    "ambientLight": 0.8,
+    "diffuseAmbient": 0.8,
+    "floorTexture": {
+      "map": "./assets/floor/parquet-light.svg",
+      "alphaMap": "./assets/floor/parquet-alpha.svg",
+      "repeatX": 2.5,
+      "repeatY": 2.5,
+      "roughness": 0.86,
+      "metalness": 0.03,
+      "alphaTest": 0,
+      "transparent": true
+    },
+    "defaultPaintingHeight": 1,
+    "cameraFov": 100
+  },
+  "rooms": [
+    {
+      "id": "hall_a",
+      "name": "Sala A",
+      "x": -20,
+      "z": -10,
+      "width": 10,
+      "depth": 10,
+      "height": 4,
+      "openings": [
+        {
+          "wall": "east",
+          "center": 5,
+          "width": 2.4,
+          "height": 2.6,
+          "base": 0,
+          "centerCm": 500,
+          "widthCm": 240,
+          "heightCm": 260,
+          "baseCm": 0
+        }
+      ],
+      "widthCm": 1000,
+      "depthCm": 1000,
+      "heightCm": 400
+    },
+    {
+      "id": "hall_b",
+      "name": "Sala B",
+      "x": -10,
+      "z": -10,
+      "width": 10,
+      "depth": 10,
+      "height": 4,
+      "openings": [
+        {
+          "wall": "west",
+          "center": 5,
+          "width": 2.4,
+          "height": 2.6,
+          "base": 0,
+          "centerCm": 500,
+          "widthCm": 240,
+          "heightCm": 260,
+          "baseCm": 0
+        },
+        {
+          "wall": "east",
+          "center": 5,
+          "width": 2.4,
+          "height": 2.6,
+          "base": 0,
+          "centerCm": 500,
+          "widthCm": 240,
+          "heightCm": 260,
+          "baseCm": 0
+        }
+      ],
+      "widthCm": 1000,
+      "depthCm": 1000,
+      "heightCm": 400
+    },
+    {
+      "id": "hall_c",
+      "name": "Sala C",
+      "x": 0,
+      "z": -10,
+      "width": 10,
+      "depth": 10,
+      "height": 4,
+      "openings": [
+        {
+          "wall": "west",
+          "center": 5,
+          "width": 2.4,
+          "height": 2.6,
+          "base": 0,
+          "centerCm": 500,
+          "widthCm": 240,
+          "heightCm": 260,
+          "baseCm": 0
+        },
+        {
+          "wall": "east",
+          "center": 5,
+          "width": 2.4,
+          "height": 2.6,
+          "base": 0,
+          "centerCm": 500,
+          "widthCm": 240,
+          "heightCm": 260,
+          "baseCm": 0
+        }
+      ],
+      "widthCm": 1000,
+      "depthCm": 1000,
+      "heightCm": 400
+    },
+    {
+      "id": "hall_d",
+      "name": "Sala D",
+      "x": 10,
+      "z": -10,
+      "width": 10,
+      "depth": 10,
+      "height": 4,
+      "openings": [
+        {
+          "wall": "west",
+          "center": 5,
+          "width": 2.4,
+          "height": 2.6,
+          "base": 0,
+          "centerCm": 500,
+          "widthCm": 240,
+          "heightCm": 260,
+          "baseCm": 0
+        }
+      ],
+      "widthCm": 1000,
+      "depthCm": 1000,
+      "heightCm": 400
+    }
+  ],
+  "paintings": [
+    {
+      "id": "a_n_1",
+      "title": "Dinamica del Colore",
+      "description": "Composizione astratta con transizione cromatica intensa e profondita luminosa.",
+      "synopsis": {
+        "Artista": "Letizia Rostagno",
+        "Anno": "2023",
+        "Tecnica": "Fotografia"
+      },
+      "roomId": "hall_a",
+      "wall": "north",
+      "offset": 2.2,
+      "width": 1.5,
+      "height": 1.1,
+      "centerY": 1.7,
+      "image": "./assets/art/1.jpg",
+      "scale": 1.1,
+      "widthCm": 150,
+      "heightCm": 110,
+      "lightOffset": {
+        "x": 0,
+        "y": 1.75,
+        "z": 0.9,
+        "xCm": 0,
+        "yCm": 175,
+        "zCm": 90
+      },
+      "light": {
+        "intensity": 13,
+        "distance": 11.5,
+        "angle": 0.4,
+        "penumbra": 0.25,
+        "decay": 1.4
+      }
+    },
+    {
+      "id": "a_n_2",
+      "title": "Soglia Blu",
+      "description": "Dialogo tra forme geometriche e luce fredda in equilibrio strutturale.",
+      "synopsis": {
+        "Artista": "Letizia Rostagno",
+        "Anno": "2021",
+        "Tecnica": "Fotografia"
+      },
+      "roomId": "hall_a",
+      "wall": "north",
+      "offset": 7.4,
+      "width": 1.4,
+      "height": 1,
+      "centerY": 1.68,
+      "image": "./assets/art/2.jpg",
+      "scale": 1,
+      "widthCm": 140,
+      "heightCm": 100,
+      "lightOffset": {
+        "x": 0,
+        "y": 1.75,
+        "z": 0.9,
+        "xCm": 0,
+        "yCm": 175,
+        "zCm": 90
+      },
+      "light": {
+        "intensity": 13,
+        "distance": 11.5,
+        "angle": 0.4,
+        "penumbra": 0.25,
+        "decay": 1.4
+      }
+    },
+    {
+      "id": "a_s_1",
+      "title": "Aria Riflessa",
+      "description": "Onde sovrapposte che evocano una percezione atmosferica in movimento.",
+      "synopsis": {
+        "Artista": "Letizia Rostagno",
+        "Anno": "2022",
+        "Tecnica": "Fotografia"
+      },
+      "roomId": "hall_c",
+      "wall": "south",
+      "offset": 2.4,
+      "width": 1.55,
+      "height": 1.1,
+      "centerY": 1.7,
+      "image": "./assets/art/3.jpg",
+      "scale": 1.1,
+      "widthCm": 155,
+      "heightCm": 110,
+      "lightOffset": {
+        "x": 0,
+        "y": 1.75,
+        "z": 0.9,
+        "xCm": 0,
+        "yCm": 175,
+        "zCm": 90
+      },
+      "light": {
+        "intensity": 13,
+        "distance": 11.5,
+        "angle": 0.4,
+        "penumbra": 0.25,
+        "decay": 1.4
+      }
+    },
+    {
+      "id": "a_s_2",
+      "title": "Orizzonte Strutturato",
+      "description": "Pattern triangolari che costruiscono un paesaggio sintetico e tattile.",
+      "synopsis": {
+        "Artista": "Letizia Rostagno",
+        "Anno": "2024",
+        "Tecnica": "Fotografia"
+      },
+      "roomId": "hall_c",
+      "wall": "south",
+      "offset": 7.2,
+      "width": 1.45,
+      "height": 1.02,
+      "centerY": 1.67,
+      "image": "./assets/art/4.jpg",
+      "scale": 1.02,
+      "widthCm": 145,
+      "heightCm": 102,
+      "lightOffset": {
+        "x": 0,
+        "y": 1.75,
+        "z": 0.9,
+        "xCm": 0,
+        "yCm": 175,
+        "zCm": 90
+      },
+      "light": {
+        "intensity": 13,
+        "distance": 11.5,
+        "angle": 0.4,
+        "penumbra": 0.25,
+        "decay": 1.4
+      }
+    },
+    {
+      "id": "a_w_1",
+      "title": "Moduli Verticali",
+      "description": "Sequenza ritmica di elementi verticali con tensione urbana.",
+      "synopsis": {
+        "Artista": "Letizia Rostagno",
+        "Anno": "2020",
+        "Tecnica": "Fotografia"
+      },
+      "roomId": "hall_c",
+      "wall": "west",
+      "offset": 2.2,
+      "width": 1.38,
+      "height": 0.98,
+      "centerY": 1.66,
+      "image": "./assets/art/5.jpg",
+      "scale": 0.98,
+      "widthCm": 138,
+      "heightCm": 98,
+      "lightOffset": {
+        "x": 0,
+        "y": 1.75,
+        "z": 0.9,
+        "xCm": 0,
+        "yCm": 175,
+        "zCm": 90
+      },
+      "light": {
+        "intensity": 13,
+        "distance": 11.5,
+        "angle": 0.4,
+        "penumbra": 0.25,
+        "decay": 1.4
+      }
+    },
+    {
+      "id": "a_w_2",
+      "title": "Variazione Fredda",
+      "description": "Equilibrio tra massa scura e aperture luminose su fondo gradiente.",
+      "synopsis": {
+        "Artista": "Letizia Rostagno",
+        "Anno": "2025",
+        "Tecnica": "Fotografia"
+      },
+      "roomId": "hall_c",
+      "wall": "west",
+      "offset": 7.6,
+      "width": 1.34,
+      "height": 0.96,
+      "centerY": 1.64,
+      "image": "./assets/art/6.jpg",
+      "scale": 0.96,
+      "widthCm": 134,
+      "heightCm": 96,
+      "lightOffset": {
+        "x": 0,
+        "y": 1.75,
+        "z": 0.9,
+        "xCm": 0,
+        "yCm": 175,
+        "zCm": 90
+      },
+      "light": {
+        "intensity": 13,
+        "distance": 11.5,
+        "angle": 0.4,
+        "penumbra": 0.25,
+        "decay": 1.4
+      }
+    },
+    {
+      "id": "a_e_1",
+      "title": "Traccia d'Onda",
+      "description": "Linee continue e gradazioni luminose che allargano la profondita.",
+      "synopsis": {
+        "Artista": "Letizia Rostagno",
+        "Anno": "2019",
+        "Tecnica": "Fotografia"
+      },
+      "roomId": "hall_a",
+      "wall": "east",
+      "offset": 2,
+      "width": 1.42,
+      "height": 1.03,
+      "centerY": 1.67,
+      "image": "./assets/art/7.jpg",
+      "scale": 1.03,
+      "widthCm": 142,
+      "heightCm": 103,
+      "lightOffset": {
+        "x": 0,
+        "y": 1.75,
+        "z": 0.9,
+        "xCm": 0,
+        "yCm": 175,
+        "zCm": 90
+      },
+      "light": {
+        "intensity": 13,
+        "distance": 11.5,
+        "angle": 0.4,
+        "penumbra": 0.25,
+        "decay": 1.4
+      }
+    },
+    {
+      "id": "a_e_2",
+      "title": "Sintesi Materica",
+      "description": "Superfici stratificate e geometrie morbide in dialogo cromatico caldo-freddo.",
+      "synopsis": {
+        "Artista": "Letizia Rostagno",
+        "Anno": "2021",
+        "Tecnica": "Fotografia"
+      },
+      "roomId": "hall_a",
+      "wall": "east",
+      "offset": 8,
+      "width": 1.46,
+      "height": 1.04,
+      "centerY": 1.66,
+      "image": "./assets/art/8.jpg",
+      "scale": 1.04,
+      "widthCm": 146,
+      "heightCm": 104,
+      "lightOffset": {
+        "x": 0,
+        "y": 1.75,
+        "z": 0.9,
+        "xCm": 0,
+        "yCm": 175,
+        "zCm": 90
+      },
+      "light": {
+        "intensity": 13,
+        "distance": 11.5,
+        "angle": 0.4,
+        "penumbra": 0.25,
+        "decay": 1.4
+      }
+    },
+    {
+      "id": "b_n_1",
+      "title": "Campo Radiale",
+      "description": "Espansione concentrica con contrappunto di luce centrale.",
+      "synopsis": {
+        "Artista": "Letizia Rostagno",
+        "Anno": "2022",
+        "Tecnica": "Fotografia"
+      },
+      "roomId": "hall_b",
+      "wall": "north",
+      "offset": 2.3,
+      "width": 1.52,
+      "height": 1.1,
+      "centerY": 1.7,
+      "image": "./assets/art/9.jpg",
+      "scale": 1.1,
+      "widthCm": 152,
+      "heightCm": 110,
+      "lightOffset": {
+        "x": 0,
+        "y": 1.75,
+        "z": 0.9,
+        "xCm": 0,
+        "yCm": 175,
+        "zCm": 90
+      },
+      "light": {
+        "intensity": 13,
+        "distance": 11.5,
+        "angle": 0.4,
+        "penumbra": 0.25,
+        "decay": 1.4
+      }
+    },
+    {
+      "id": "b_n_2",
+      "title": "Schema Urbano",
+      "description": "Griglia ritmica che evoca skyline e infrastrutture contemporanee.",
+      "synopsis": {
+        "Artista": "Letizia Rostagno",
+        "Anno": "2020",
+        "Tecnica": "Fotografia"
+      },
+      "roomId": "hall_b",
+      "wall": "north",
+      "offset": 7.5,
+      "width": 1.4,
+      "height": 1,
+      "centerY": 1.67,
+      "image": "./assets/art/opera-2.svg",
+      "scale": 1,
+      "widthCm": 140,
+      "heightCm": 100,
+      "lightOffset": {
+        "x": 0,
+        "y": 1.75,
+        "z": 0.9,
+        "xCm": 0,
+        "yCm": 175,
+        "zCm": 90
+      },
+      "light": {
+        "intensity": 13,
+        "distance": 11.5,
+        "angle": 0.4,
+        "penumbra": 0.25,
+        "decay": 1.4
+      }
+    },
+    {
+      "id": "b_s_1",
+      "title": "Arco di Luce",
+      "description": "Curvatura luminosa con profondita tonale e atmosfera sospesa.",
+      "synopsis": {
+        "Artista": "Letizia Rostagno",
+        "Anno": "2024",
+        "Tecnica": "Fotografia"
+      },
+      "roomId": "hall_d",
+      "wall": "south",
+      "offset": 2.5,
+      "width": 1.58,
+      "height": 1.12,
+      "centerY": 1.7,
+      "image": "./assets/art/opera-1.svg",
+      "scale": 1.12,
+      "widthCm": 158,
+      "heightCm": 112,
+      "lightOffset": {
+        "x": 0,
+        "y": 1.75,
+        "z": 0.9,
+        "xCm": 0,
+        "yCm": 175,
+        "zCm": 90
+      },
+      "light": {
+        "intensity": 13,
+        "distance": 11.5,
+        "angle": 0.4,
+        "penumbra": 0.25,
+        "decay": 1.4
+      }
+    },
+    {
+      "id": "b_s_2",
+      "title": "Tessitura del Vuoto",
+      "description": "Composizione modulare che alterna vuoti e campiture cromatiche.",
+      "synopsis": {
+        "Artista": "Letizia Rostagno",
+        "Anno": "2023",
+        "Tecnica": "Fotografia"
+      },
+      "roomId": "hall_d",
+      "wall": "south",
+      "offset": 7.3,
+      "width": 1.45,
+      "height": 1.02,
+      "centerY": 1.66,
+      "image": "./assets/art/1.jpg",
+      "scale": 1.02,
+      "widthCm": 145,
+      "heightCm": 102,
+      "lightOffset": {
+        "x": 0,
+        "y": 1.75,
+        "z": 0.9,
+        "xCm": 0,
+        "yCm": 175,
+        "zCm": 90
+      },
+      "light": {
+        "intensity": 13,
+        "distance": 11.5,
+        "angle": 0.4,
+        "penumbra": 0.25,
+        "decay": 1.4
+      }
+    },
+    {
+      "id": "b_w_1",
+      "title": "Passaggio Tonale",
+      "description": "Gradienti profondi che guidano lo sguardo lungo la parete.",
+      "synopsis": {
+        "Artista": "Letizia Rostagno",
+        "Anno": "2019",
+        "Tecnica": "Fotografia"
+      },
+      "roomId": "hall_b",
+      "wall": "west",
+      "offset": 2,
+      "width": 1.36,
+      "height": 0.96,
+      "centerY": 1.65,
+      "image": "./assets/art/1.jpg",
+      "scale": 0.96,
+      "widthCm": 136,
+      "heightCm": 96,
+      "lightOffset": {
+        "x": 0,
+        "y": 1.75,
+        "z": 0.9,
+        "xCm": 0,
+        "yCm": 175,
+        "zCm": 90
+      },
+      "light": {
+        "intensity": 13,
+        "distance": 11.5,
+        "angle": 0.4,
+        "penumbra": 0.25,
+        "decay": 1.4
+      }
+    },
+    {
+      "id": "b_w_2",
+      "title": "Segnale Costruttivo",
+      "description": "Pattern segmentato con forte contrasto tra base e verticali.",
+      "synopsis": {
+        "Artista": "Letizia Rostagno",
+        "Anno": "2021",
+        "Tecnica": "Fotografia"
+      },
+      "roomId": "hall_b",
+      "wall": "west",
+      "offset": 8,
+      "width": 1.34,
+      "height": 0.95,
+      "centerY": 1.64,
+      "image": "./assets/art/2.jpg",
+      "scale": 0.95,
+      "widthCm": 134,
+      "heightCm": 95,
+      "lightOffset": {
+        "x": 0,
+        "y": 1.75,
+        "z": 0.9,
+        "xCm": 0,
+        "yCm": 175,
+        "zCm": 90
+      },
+      "light": {
+        "intensity": 13,
+        "distance": 11.5,
+        "angle": 0.4,
+        "penumbra": 0.25,
+        "decay": 1.4
+      }
+    },
+    {
+      "id": "b_e_1",
+      "title": "Profilo Dinamico",
+      "description": "Intersezione di triangoli e piani con andamento diagonale.",
+      "synopsis": {
+        "Artista": "Letizia Rostagno",
+        "Anno": "2025",
+        "Tecnica": "Fotografia"
+      },
+      "roomId": "hall_d",
+      "wall": "east",
+      "offset": 2.3,
+      "width": 1.48,
+      "height": 1.05,
+      "centerY": 1.68,
+      "image": "./assets/art/2.webp",
+      "scale": 1.05,
+      "widthCm": 148,
+      "heightCm": 105,
+      "lightOffset": {
+        "x": 0,
+        "y": 1.75,
+        "z": 0.9,
+        "xCm": 0,
+        "yCm": 175,
+        "zCm": 90
+      },
+      "light": {
+        "intensity": 13,
+        "distance": 11.5,
+        "angle": 0.4,
+        "penumbra": 0.25,
+        "decay": 1.4
+      }
+    },
+    {
+      "id": "b_e_2",
+      "title": "Marea Luminosa",
+      "description": "Sovrapposizioni ondulate con punto focale caldo e diffuso.",
+      "synopsis": {
+        "Artista": "Letizia Rostagno",
+        "Anno": "2022",
+        "Tecnica": "Fotografia"
+      },
+      "roomId": "hall_d",
+      "wall": "east",
+      "offset": 7.7,
+      "width": 1.44,
+      "height": 1.02,
+      "centerY": 1.66,
+      "image": "./assets/art/8.webp",
+      "scale": 1.02,
+      "widthCm": 144,
+      "heightCm": 102,
+      "lightOffset": {
+        "x": 0,
+        "y": 1.75,
+        "z": 0.9,
+        "xCm": 0,
+        "yCm": 175,
+        "zCm": 90
+      },
+      "light": {
+        "intensity": 13,
+        "distance": 11.5,
+        "angle": 0.4,
+        "penumbra": 0.25,
+        "decay": 1.4
+      }
+    }
+  ]
+}
