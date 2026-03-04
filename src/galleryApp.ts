@@ -25,6 +25,7 @@ import type {
 import { getFirstImageFile, isValidShowConfig } from "./gallery/files";
 import { generatePaintingId as nextPaintingId, generateWallId } from "./gallery/idGenerators";
 import { attachGalleryInput } from "./gallery/inputBindings";
+import { resolveAppUrl } from "./gallery/url";
 import { createInputEventHandlers } from "./gallery/inputEventHandlers";
 import { createFilmstripController } from "./gallery/filmstripController";
 import { createSceneConfigController } from "./gallery/sceneConfigController";
@@ -619,7 +620,7 @@ init().catch((err) => {
 });
 
 async function init() {
-  config = await fetch(`${import.meta.env.BASE_URL}config/gallery.json`).then((r) => r.json());
+  config = await fetch(resolveAppUrl("config/gallery.json")).then((r) => r.json());
 
   applyVisitorConfig(config.visitor);
   buildWorld(config);

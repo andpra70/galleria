@@ -1,5 +1,6 @@
 import * as THREE_NS from "three";
 import type { RenderingConfigWithFloorTexture } from "./types";
+import { resolveAppUrl } from "./url";
 type TextureLike = THREE_NS.Texture | null | undefined;
 export type CreateFloorMaterialArgs = {
   THREE: typeof import("three");
@@ -40,10 +41,10 @@ export function createFloorMaterial({ THREE, loader, renderer, renderCfg, floorC
   };
 
   const colorMap = floorTextureCfg.map
-    ? configureTexture(loader.load(floorTextureCfg.map), THREE.SRGBColorSpace)
+    ? configureTexture(loader.load(resolveAppUrl(floorTextureCfg.map)), THREE.SRGBColorSpace)
     : configureTexture(createParquetTexture({ THREE, renderer }), THREE.SRGBColorSpace);
   const alphaMap = floorTextureCfg.alphaMap
-    ? configureTexture(loader.load(floorTextureCfg.alphaMap), THREE.NoColorSpace)
+    ? configureTexture(loader.load(resolveAppUrl(floorTextureCfg.alphaMap)), THREE.NoColorSpace)
     : null;
 
   return new THREE.MeshStandardMaterial({

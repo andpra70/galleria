@@ -1,5 +1,6 @@
 import * as THREE_NS from "three";
 import type { AppContext } from "./appServices";
+import { resolveAppUrl } from "./url";
 import type {
   GalleryPainting,
   GalleryRoom,
@@ -78,6 +79,7 @@ export function createPaintingBuilder(deps: PaintingBuilderDeps) {
     const sourceImage = (painting.image || "").trim();
     const noImagePlaceholder = getNoImagePlaceholder();
     const activeImage = sourceImage || noImagePlaceholder || createPlaceholderPaintingImage("No image");
+    const resolvedActiveImage = resolveAppUrl(activeImage);
 
     const frame = new THREE.Mesh(
       new THREE.BoxGeometry(initialDimensions.width + border * 2, initialDimensions.height + border * 2, frameDepth),
@@ -85,7 +87,7 @@ export function createPaintingBuilder(deps: PaintingBuilderDeps) {
     ) as PaintingFrameMesh;
 
     const imageTexture = loader.load(
-      activeImage,
+      resolvedActiveImage,
       (texture: THREE_NS.Texture) => {
         if (!canvas || !paintingSpot || !entry) {
           return;
@@ -97,7 +99,7 @@ export function createPaintingBuilder(deps: PaintingBuilderDeps) {
       },
       undefined,
       () => {
-        console.warn(`Impossibile caricare l'immagine ${activeImage}`);
+        console.warn(`Impossibile caricare l'immagine ${resolvedActiveImage}`);
         const fallbackImage = getNoImagePlaceholder();
         if (entry && fallbackImage && activeImage !== fallbackImage) {
           applyPaintingImage(entry, fallbackImage, false);
@@ -171,7 +173,7 @@ export function createPaintingBuilder(deps: PaintingBuilderDeps) {
       title: painting.title,
       description: painting.description ?? "",
       synopsis: painting.synopsis ?? {},
-      image: sourceImage || activeImage,
+      image: resolveAppUrl(sourceImage || activeImage),
       center: transform.position.clone(),
       normal: transform.normal.clone(),
       width: initialDimensions.width,

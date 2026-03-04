@@ -1,5 +1,6 @@
 import type { AppContext } from "./appServices";
 import type { PaintingRegistryEntry, PaintingSpot, GalleryPainting } from "./types";
+import { resolveAppUrl } from "./url";
 type MeshLike = any;
 
 type PaintingDimensions = { width: number; height: number };
@@ -91,14 +92,15 @@ export function createPaintingImageOps(deps: PaintingImageOpsDeps) {
   }
 
   function applyPaintingImage(entry: PaintingRegistryEntry, imageUrl: string, isObjectUrl = false) {
+    const resolvedImageUrl = resolveAppUrl(imageUrl);
     const texture = loader.load(
-      imageUrl,
+      resolvedImageUrl,
       (loaded: any) => {
         const updated = inferPaintingDimensions(entry.painting, loaded.image);
         applyPaintingDimensions(entry.frame, entry.canvas, updated, entry.border, entry.frameDepth, entry.paintingSpot);
         applyPaintingPlacement(entry);
         if (cardState.paintingId === entry.painting.id) {
-          artCardImage.src = imageUrl;
+          artCardImage.src = resolvedImageUrl;
           if (uiState.editMode) {
             getShowEditPanelForEntry()?.(entry);
           }
@@ -106,7 +108,7 @@ export function createPaintingImageOps(deps: PaintingImageOpsDeps) {
       },
       undefined,
       () => {
-        console.warn(`Impossibile caricare l'immagine ${imageUrl}`);
+        console.warn(`Impossibile caricare l'immagine ${resolvedImageUrl}`);
         const noImagePlaceholder = app.status.refs.getNoImagePlaceholder();
         if (noImagePlaceholder && imageUrl !== noImagePlaceholder) {
           applyPaintingImage(entry, noImagePlaceholder, false);
@@ -132,7 +134,7 @@ export function createPaintingImageOps(deps: PaintingImageOpsDeps) {
       entry.objectUrl = imageUrl;
     }
     entry.painting.image = imageUrl;
-    entry.paintingSpot.image = imageUrl;
+    entry.paintingSpot.image = resolvedImageUrl;
     entry.hasSourceImage = imageUrl !== app.status.refs.getNoImagePlaceholder();
   }
 

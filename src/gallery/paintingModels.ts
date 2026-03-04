@@ -1,5 +1,6 @@
 import * as THREE_NS from "three";
 import type { FilmstripItemViewModel, GalleryPainting, PaintingCardViewModel } from './types';
+import { resolveAppUrl } from "./url";
 
 export function toFilmstripItemViewModel(
   painting: GalleryPainting,
@@ -9,7 +10,7 @@ export function toFilmstripItemViewModel(
   return {
     id: painting.id,
     title: painting.title || painting.id || 'Opera',
-    image: (painting.image || '').trim() || fallbackImage,
+    image: resolveAppUrl((painting.image || '').trim()) || fallbackImage,
     isSelected: painting.id === selectedPaintingId,
     isPlaced: painting.placed !== false,
   };
@@ -61,7 +62,7 @@ export function createPseudoPaintingCardViewModel(args: {
     title: painting.title ?? 'Opera',
     description: painting.description ?? '',
     synopsis: painting.synopsis ?? {},
-    image: (painting.image || '').trim() || noImagePlaceholder || createPlaceholderPaintingImage('No image'),
+    image: resolveAppUrl((painting.image || '').trim()) || noImagePlaceholder || createPlaceholderPaintingImage('No image'),
     center: visitorPosition.clone(),
     normal: new THREE.Vector3(0, 0, 1),
     width: cmToM(painting.widthCm ?? 100),
