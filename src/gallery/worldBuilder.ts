@@ -1,7 +1,26 @@
 import * as THREE_NS from "three";
-import type { CustomWallConfig, FloorMesh, GalleryRoom, GalleryWallMesh, WallSide } from "./types";
+import type { CustomWallConfig, FloorMesh, GalleryRoom, GalleryRoomOpening, GalleryWallMesh, WallSide } from "./types";
 
 type IntervalSegment = { from: number; to: number; base: number; top: number };
+type WallAxis = "x" | "z";
+type WallLineDescriptor = {
+  axis: WallAxis;
+  coord: number;
+  from: number;
+  to: number;
+  span: number;
+  start: number;
+};
+type SharedWallOverlap = {
+  from: number;
+  to: number;
+  worldFrom: number;
+  worldTo: number;
+  otherRoom: GalleryRoom;
+  otherWall: WallSide;
+  otherStart: number;
+  ownerRoomId: string;
+};
 type WorldBuilderDeps = {
   THREE: typeof import("three");
   world: THREE_NS.Group;
@@ -10,6 +29,9 @@ type WorldBuilderDeps = {
   wallColliders: THREE_NS.Box3[];
   cmToM: (cm: number) => number;
 };
+
+const WALL_MATCH_EPS = 0.001;
+const WALL_SEGMENT_EPS = 0.01;
 
 export function createWorldBuilder({ THREE, world, floorMeshes, wallMeshes, wallColliders, cmToM }: WorldBuilderDeps) {
   function cacheWallCollider(mesh: GalleryWallMesh): void {
@@ -54,6 +76,171 @@ export function createWorldBuilder({ THREE, world, floorMeshes, wallMeshes, wall
     return out;
   }
 
+  function getOppositeWall(wall: WallSide): WallSide {
+    if (wall === "north") return "south";
+    if (wall === "south") return "north";
+    if (wall === "west") return "east";
+    return "west";
+  }
+
+  function getWallLine(room: GalleryRoom, wall: WallSide): WallLineDescriptor {
+    if (wall === "north") {
+      return {
+        axis: "x",
+        coord: room.z,
+        from: room.x,
+        to: room.x + room.width,
+        span: room.width,
+        start: room.x,
+      };
+    }
+    if (wall === "south") {
+      return {
+        axis: "x",
+        coord: room.z + room.depth,
+        from: room.x,
+        to: room.x + room.width,
+        span: room.width,
+        start: room.x,
+      };
+    }
+    if (wall === "west") {
+      return {
+        axis: "z",
+        coord: room.x,
+        from: room.z,
+        to: room.z + room.depth,
+        span: room.depth,
+        start: room.z,
+      };
+    }
+    return {
+      axis: "z",
+      coord: room.x + room.width,
+      from: room.z,
+      to: room.z + room.depth,
+      span: room.depth,
+      start: room.z,
+    };
+  }
+
+  function normalizeOpening(opening: GalleryRoomOpening, fallbackHeight: number): IntervalSegment | null {
+    const center = Number(opening.center ?? 0);
+    const width = Math.max(0, Number(opening.width ?? 0));
+    if (width <= WALL_MATCH_EPS) {
+      return null;
+    }
+    const base = Math.max(0, Number(opening.base ?? 0));
+    const top = Math.max(base, base + Math.max(0, Number(opening.height ?? fallbackHeight)));
+    return {
+      from: center - width * 0.5,
+      to: center + width * 0.5,
+      base,
+      top,
+    };
+  }
+
+  function collectSharedWallOverlaps(
+    room: GalleryRoom,
+    wall: WallSide,
+    allRooms: GalleryRoom[],
+    roomOrder: Map<string, number>
+  ): SharedWallOverlap[] {
+    const line = getWallLine(room, wall);
+    const oppositeWall = getOppositeWall(wall);
+    const currentOrder = roomOrder.get(room.id) ?? 0;
+
+    return allRooms
+      .filter((otherRoom) => otherRoom.id !== room.id)
+      .flatMap((otherRoom) => {
+        const otherLine = getWallLine(otherRoom, oppositeWall);
+        if (line.axis !== otherLine.axis || Math.abs(line.coord - otherLine.coord) > WALL_MATCH_EPS) {
+          return [];
+        }
+        const worldFrom = Math.max(line.from, otherLine.from);
+        const worldTo = Math.min(line.to, otherLine.to);
+        if (worldTo - worldFrom <= WALL_MATCH_EPS) {
+          return [];
+        }
+        const otherOrder = roomOrder.get(otherRoom.id) ?? 0;
+        const ownerRoomId = currentOrder <= otherOrder ? room.id : otherRoom.id;
+        return [
+          {
+            from: worldFrom - line.start,
+            to: worldTo - line.start,
+            worldFrom,
+            worldTo,
+            otherRoom,
+            otherWall: oppositeWall,
+            otherStart: otherLine.start,
+            ownerRoomId,
+          } satisfies SharedWallOverlap,
+        ];
+      });
+  }
+
+  function collectWallCuts(
+    room: GalleryRoom,
+    wall: WallSide,
+    allRooms: GalleryRoom[],
+    roomOrder: Map<string, number>
+  ): { cuts: IntervalSegment[]; suppressSharedCuts: IntervalSegment[]; span: number } {
+    const line = getWallLine(room, wall);
+    const ownOpenings = (room.openings ?? [])
+      .filter((opening) => opening.wall === wall)
+      .map((opening) => normalizeOpening(opening, room.height))
+      .filter((opening): opening is IntervalSegment => Boolean(opening))
+      .map((opening) => ({
+        from: Math.max(0, opening.from),
+        to: Math.min(line.span, opening.to),
+        base: opening.base,
+        top: Math.min(room.height, opening.top),
+      }))
+      .filter((opening) => opening.to - opening.from > WALL_MATCH_EPS);
+
+    const sharedOverlaps = collectSharedWallOverlaps(room, wall, allRooms, roomOrder);
+    const mirroredOpenings: IntervalSegment[] = [];
+
+    sharedOverlaps.forEach((shared) => {
+      const oppositeOpenings = (shared.otherRoom.openings ?? []).filter((opening) => opening.wall === shared.otherWall);
+      oppositeOpenings.forEach((opening) => {
+        const normalized = normalizeOpening(opening, shared.otherRoom.height);
+        if (!normalized) {
+          return;
+        }
+        const worldFrom = shared.otherStart + normalized.from;
+        const worldTo = shared.otherStart + normalized.to;
+        const clippedFrom = Math.max(shared.worldFrom, worldFrom);
+        const clippedTo = Math.min(shared.worldTo, worldTo);
+        if (clippedTo - clippedFrom <= WALL_MATCH_EPS) {
+          return;
+        }
+        mirroredOpenings.push({
+          from: clippedFrom - line.start,
+          to: clippedTo - line.start,
+          base: normalized.base,
+          top: Math.min(room.height, normalized.top),
+        });
+      });
+    });
+
+    const suppressSharedCuts = sharedOverlaps
+      .filter((shared) => shared.ownerRoomId !== room.id)
+      .map((shared) => ({
+        from: Math.max(0, shared.from),
+        to: Math.min(line.span, shared.to),
+        base: -1000,
+        top: 1000,
+      }))
+      .filter((shared) => shared.to - shared.from > WALL_MATCH_EPS);
+
+    return {
+      cuts: [...ownOpenings, ...mirroredOpenings],
+      suppressSharedCuts,
+      span: line.span,
+    };
+  }
+
   function makeWallSegment(
     room: GalleryRoom,
     wall: WallSide,
@@ -85,7 +272,11 @@ export function createWorldBuilder({ THREE, world, floorMeshes, wallMeshes, wall
     return wallMesh as GalleryWallMesh;
   }
 
-  function buildRoom(room: GalleryRoom, wallColor: THREE_NS.ColorRepresentation, ceilingColor: THREE_NS.ColorRepresentation, floorMaterial: THREE_NS.Material) {
+  function buildRoomFloorAndCeiling(
+    room: GalleryRoom,
+    ceilingColor: THREE_NS.ColorRepresentation,
+    floorMaterial: THREE_NS.Material
+  ) {
     const floorGeometry = new THREE.PlaneGeometry(room.width, room.depth);
     const floor = new THREE.Mesh(floorGeometry, floorMaterial);
     floor.rotation.x = -Math.PI / 2;
@@ -102,25 +293,31 @@ export function createWorldBuilder({ THREE, world, floorMeshes, wallMeshes, wall
     ceiling.rotation.x = Math.PI / 2;
     ceiling.position.set(room.x + room.width * 0.5, room.height, room.z + room.depth * 0.5);
     world.add(ceiling);
+  }
 
+  function buildRoom(
+    room: GalleryRoom,
+    wallColor: THREE_NS.ColorRepresentation,
+    ceilingColor: THREE_NS.ColorRepresentation,
+    floorMaterial: THREE_NS.Material,
+    allRooms: GalleryRoom[] = [room],
+    roomOrderArg?: Map<string, number>
+  ) {
+    const roomOrder = roomOrderArg ?? new Map(allRooms.map((candidate, index) => [candidate.id, index]));
     const wallThickness = 0.16;
     const wallMaterial = new THREE.MeshStandardMaterial({ color: wallColor, roughness: 0.94, metalness: 0.02 });
 
+    buildRoomFloorAndCeiling(room, ceilingColor, floorMaterial);
+
     (["north", "south", "west", "east"] as WallSide[]).forEach((wall) => {
-      const openings = (room.openings ?? []).filter((o) => o.wall === wall);
-      const spanLength = wall === "north" || wall === "south" ? room.width : room.depth;
-      const segments: IntervalSegment[] = subtractIntervals(
-        [{ from: 0, to: spanLength, base: 0, top: room.height }],
-        openings.map((o) => ({
-          from: Math.max(0, (o.center ?? 0) - (o.width ?? 0) * 0.5),
-          to: Math.min(spanLength, (o.center ?? 0) + (o.width ?? 0) * 0.5),
-          base: o.base ?? 0,
-          top: (o.base ?? 0) + (o.height ?? room.height),
-        }))
-      );
+      const { cuts, suppressSharedCuts, span } = collectWallCuts(room, wall, allRooms, roomOrder);
+      let segments: IntervalSegment[] = subtractIntervals([{ from: 0, to: span, base: 0, top: room.height }], cuts);
+      if (suppressSharedCuts.length) {
+        segments = subtractIntervals(segments, suppressSharedCuts);
+      }
 
       segments.forEach((seg: IntervalSegment) => {
-        if (seg.to - seg.from <= 0.01 || seg.top - seg.base <= 0.01) {
+        if (seg.to - seg.from <= WALL_SEGMENT_EPS || seg.top - seg.base <= WALL_SEGMENT_EPS) {
           return;
         }
         const mesh = makeWallSegment(room, wall, seg, wallThickness, wallMaterial);
@@ -133,7 +330,19 @@ export function createWorldBuilder({ THREE, world, floorMeshes, wallMeshes, wall
     });
   }
 
-  function makeCustomWallSegment(segment: CustomWallConfig, material: THREE_NS.MeshStandardMaterial): GalleryWallMesh | null {
+  function buildRooms(
+    rooms: GalleryRoom[],
+    wallColor: THREE_NS.ColorRepresentation,
+    ceilingColor: THREE_NS.ColorRepresentation,
+    floorMaterial: THREE_NS.Material
+  ) {
+    const roomOrder = new Map(rooms.map((room, index) => [room.id, index]));
+    rooms.forEach((room) => {
+      buildRoom(room, wallColor, ceilingColor, floorMaterial, rooms, roomOrder);
+    });
+  }
+
+  function makeCustomWallSegmentMeshes(segment: CustomWallConfig, material: THREE_NS.MeshStandardMaterial): GalleryWallMesh[] {
     const x1 = Number(segment.x1);
     const z1 = Number(segment.z1);
     const x2 = Number(segment.x2);
@@ -144,35 +353,58 @@ export function createWorldBuilder({ THREE, world, floorMeshes, wallMeshes, wall
     const dz = z2 - z1;
     const length = Math.hypot(dx, dz);
     if (length < 0.05) {
-      return null;
+      return [];
     }
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(length, height, thickness), material);
-    mesh.position.set((x1 + x2) * 0.5, height * 0.5, (z1 + z2) * 0.5);
-    mesh.rotation.y = Math.atan2(dz, dx);
-    mesh.userData = {
-      wallType: "customSegment",
-      customWallId: segment.id,
-    };
-    return mesh as GalleryWallMesh;
+    const dirX = dx / length;
+    const dirZ = dz / length;
+    const centerX = (x1 + x2) * 0.5;
+    const centerZ = (z1 + z2) * 0.5;
+    const angleY = Math.atan2(dz, dx);
+    const cuts = Array.isArray(segment.openings) ? segment.openings : [];
+    const wallSegments: IntervalSegment[] = subtractIntervals(
+      [{ from: 0, to: length, base: 0, top: height }],
+      cuts.map((opening) => ({
+        from: Math.max(0, (opening.center ?? 0) - (opening.width ?? 0) * 0.5),
+        to: Math.min(length, (opening.center ?? 0) + (opening.width ?? 0) * 0.5),
+        base: Math.max(0, opening.base ?? 0),
+        top: Math.min(height, (opening.base ?? 0) + (opening.height ?? height)),
+      }))
+    );
+
+    return wallSegments
+      .filter((part) => part.to - part.from > 0.01 && part.top - part.base > 0.01)
+      .map((part) => {
+        const partLength = part.to - part.from;
+        const partHeight = part.top - part.base;
+        const localOffset = (part.from + part.to) * 0.5 - length * 0.5;
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(partLength, partHeight, thickness), material);
+        mesh.position.set(centerX + dirX * localOffset, part.base + partHeight * 0.5, centerZ + dirZ * localOffset);
+        mesh.rotation.y = angleY;
+        mesh.userData = {
+          wallType: "customSegment",
+          customWallId: segment.id,
+        };
+        return mesh as GalleryWallMesh;
+      });
   }
 
   function buildCustomWalls(cfg: { customWalls: CustomWallConfig[] }, wallColor: THREE_NS.ColorRepresentation) {
     const material = new THREE.MeshStandardMaterial({ color: wallColor, roughness: 0.94, metalness: 0.02 });
     cfg.customWalls.forEach((segment: CustomWallConfig) => {
-      const mesh = makeCustomWallSegment(segment, material);
-      if (!mesh) {
-        return;
-      }
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      world.add(mesh);
-      cacheWallCollider(mesh);
-      wallMeshes.push(mesh);
+      const meshes = makeCustomWallSegmentMeshes(segment, material);
+      meshes.forEach((mesh) => {
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        world.add(mesh);
+        cacheWallCollider(mesh);
+        wallMeshes.push(mesh);
+      });
     });
   }
 
   return {
     buildRoom,
+    buildRooms,
     buildCustomWalls,
   };
 }

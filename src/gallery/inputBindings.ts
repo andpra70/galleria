@@ -1,8 +1,9 @@
 type InputElements = {
   canvas: HTMLCanvasElement;
   minimapCanvas: HTMLCanvasElement;
-  helpPanel: HTMLElement;
+  configPanel: HTMLElement;
   saveShowJsonBtn: HTMLButtonElement;
+  loadCatalogJsonBtn: HTMLButtonElement;
   artCardClose: HTMLButtonElement;
   editModeToggle: HTMLButtonElement;
   artEditMoveLeft: HTMLButtonElement;
@@ -25,8 +26,9 @@ export function attachGalleryInput(elements: InputElements, handlers: InputHandl
   const {
     canvas,
     minimapCanvas,
-    helpPanel,
+    configPanel,
     saveShowJsonBtn,
+    loadCatalogJsonBtn,
     artCardClose,
     editModeToggle,
     artEditMoveLeft,
@@ -57,10 +59,11 @@ export function attachGalleryInput(elements: InputElements, handlers: InputHandl
     onCanvasDragOver,
     onCanvasDrop,
     onMinimapClick,
-    onHelpPanelDragOver,
-    onHelpPanelDragLeave,
-    onHelpPanelDrop,
+    onConfigPanelDragOver,
+    onConfigPanelDragLeave,
+    onConfigPanelDrop,
     onSaveShowJson,
+    onLoadCatalogJson,
     closePaintingCard,
     onToggleEditMode,
     onEditMoveLeft,
@@ -95,10 +98,11 @@ export function attachGalleryInput(elements: InputElements, handlers: InputHandl
   canvas.addEventListener("drop", onCanvasDrop);
   minimapCanvas.addEventListener("click", onMinimapClick);
 
-  helpPanel.addEventListener("dragover", onHelpPanelDragOver);
-  helpPanel.addEventListener("dragleave", onHelpPanelDragLeave);
-  helpPanel.addEventListener("drop", onHelpPanelDrop);
+  configPanel.addEventListener("dragover", onConfigPanelDragOver);
+  configPanel.addEventListener("dragleave", onConfigPanelDragLeave);
+  configPanel.addEventListener("drop", onConfigPanelDrop);
   saveShowJsonBtn.addEventListener("click", onSaveShowJson);
+  loadCatalogJsonBtn.addEventListener("click", onLoadCatalogJson);
   artCardClose.addEventListener("click", closePaintingCard);
   editModeToggle.addEventListener("click", onToggleEditMode);
 

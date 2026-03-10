@@ -29,7 +29,7 @@ export interface AppContext {
     raycaster: THREE_NS.Raycaster;
   };
   dom: {
-    helpPanel: HTMLElement;
+    configPanel: HTMLElement;
     minimapCanvas: HTMLCanvasElement;
     filmstripItems: HTMLElement | null;
     artCard: HTMLElement;

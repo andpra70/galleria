@@ -1,6 +1,12 @@
 import type { AppContext } from "./appServices";
 import type { PaintingRegistryEntry } from "./types";
 
+type DeletePaintingEntryOptions = {
+  closePaintingCard?: boolean;
+  refreshFilmstrip?: boolean;
+  deferResourceDisposal?: boolean;
+};
+
 type PaintingRegistryActionsDeps = {
   app: AppContext;
   uiActions: {
@@ -14,7 +20,22 @@ export function createPaintingRegistryActions({ app, uiActions }: PaintingRegist
   const { paintingMeshes, paintingPickMeshes, paintingDeleteMeshes, paintingMoveMeshes, paintingSpots, paintingRegistry } = app.collections;
   const { closePaintingCard, renderFilmstrip } = uiActions;
 
-  function deletePaintingEntry(entry: PaintingRegistryEntry) {
+  function scheduleResourceDisposal(task: () => void) {
+    const win = window as Window & { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number };
+    if (typeof win.requestIdleCallback === "function") {
+      win.requestIdleCallback(task, { timeout: 250 });
+      return;
+    }
+    window.setTimeout(task, 0);
+  }
+
+  function deletePaintingEntry(entry: PaintingRegistryEntry, options: DeletePaintingEntryOptions = {}) {
+    const {
+      closePaintingCard: shouldClosePaintingCard = true,
+      refreshFilmstrip: shouldRefreshFilmstrip = true,
+      deferResourceDisposal = true,
+    } = options;
+
     if (entry.objectUrl) {
       URL.revokeObjectURL(entry.objectUrl);
       entry.objectUrl = null;
@@ -22,16 +43,23 @@ export function createPaintingRegistryActions({ app, uiActions }: PaintingRegist
 
     world.remove(entry.frame, entry.canvas, entry.spot, entry.spotTarget, entry.deleteHandle, entry.moveHandle);
 
-    entry.frame.geometry.dispose();
-    entry.frame.material.dispose();
-    entry.canvas.geometry.dispose();
-    entry.canvas.material.map?.dispose();
-    entry.canvas.material.dispose();
-    entry.spot.dispose();
-    entry.deleteHandle.geometry.dispose();
-    entry.deleteHandle.material.dispose();
-    entry.moveHandle.geometry.dispose();
-    entry.moveHandle.material.dispose();
+    const disposeResources = () => {
+      entry.frame.geometry.dispose();
+      entry.frame.material.dispose();
+      entry.canvas.geometry.dispose();
+      entry.canvas.material.map?.dispose();
+      entry.canvas.material.dispose();
+      entry.spot.dispose();
+      entry.deleteHandle.geometry.dispose();
+      entry.deleteHandle.material.dispose();
+      entry.moveHandle.geometry.dispose();
+      entry.moveHandle.material.dispose();
+    };
+    if (deferResourceDisposal) {
+      scheduleResourceDisposal(disposeResources);
+    } else {
+      disposeResources();
+    }
 
     const meshIdx = paintingMeshes.indexOf(entry.canvas);
     if (meshIdx >= 0) paintingMeshes.splice(meshIdx, 1);
@@ -49,8 +77,12 @@ export function createPaintingRegistryActions({ app, uiActions }: PaintingRegist
     paintingRegistry.delete(entry.painting.id);
     entry.painting.placed = false;
 
-    closePaintingCard();
-    renderFilmstrip();
+    if (shouldClosePaintingCard) {
+      closePaintingCard();
+    }
+    if (shouldRefreshFilmstrip) {
+      renderFilmstrip();
+    }
   }
 
   return {

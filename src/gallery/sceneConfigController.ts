@@ -1,6 +1,6 @@
 import * as THREE_NS from "three";
 import type { AppContext } from "./appServices";
-import type { CustomWallConfig, GalleryPainting, GalleryRoom, ShowConfig, VisitorConfig } from "./types";
+import type { CustomWallConfig, GalleryPainting, GalleryRoom, GalleryRoomOpening, ShowConfig, VisitorConfig } from "./types";
 import { createPaintingConfigModel } from "./paintingModels";
 
 type SceneConfigControllerDeps = {
@@ -11,7 +11,9 @@ type SceneConfigControllerDeps = {
       room: GalleryRoom,
       wallColor: THREE_NS.ColorRepresentation,
       ceilingColor: THREE_NS.ColorRepresentation,
-      floorMaterial: THREE_NS.Material
+      floorMaterial: THREE_NS.Material,
+      allRooms?: GalleryRoom[],
+      roomOrder?: Map<string, number>
     ) => void;
     buildCustomWalls: (cfg: { customWalls?: CustomWallConfig[] }, wallColor: THREE_NS.ColorRepresentation) => void;
     buildPainting: (painting: GalleryPainting) => void;
@@ -24,6 +26,17 @@ type SceneConfigControllerDeps = {
   };
   getRenderFilmstrip?: () => void;
   getClosePaintingCard?: () => void;
+};
+
+type CatalogImportReport = {
+  total: number;
+  imported: number;
+  skipped: number;
+  replacedExisting: boolean;
+};
+
+type CatalogImportOptions = {
+  replaceExisting?: boolean;
 };
 
 export function createSceneConfigController(deps: SceneConfigControllerDeps) {
@@ -62,6 +75,34 @@ export function createSceneConfigController(deps: SceneConfigControllerDeps) {
     });
   }
 
+  function normalizeWallOpeningsFromCm(openingsInput: unknown, wallHeight: number, defaultWall: string) {
+    const openings = Array.isArray(openingsInput) ? openingsInput : [];
+    openings.forEach((opening: GalleryRoomOpening) => {
+      if (opening.centerCm != null) {
+        opening.center = cmToM(opening.centerCm);
+      } else {
+        opening.centerCm = Math.round(mToCm(opening.center ?? 0));
+      }
+      if (opening.widthCm != null) {
+        opening.width = cmToM(opening.widthCm);
+      } else {
+        opening.widthCm = Math.round(mToCm(opening.width ?? 0));
+      }
+      if (opening.heightCm != null) {
+        opening.height = cmToM(opening.heightCm);
+      } else {
+        opening.heightCm = Math.round(mToCm(opening.height ?? wallHeight));
+      }
+      if (opening.baseCm != null) {
+        opening.base = cmToM(opening.baseCm);
+      } else {
+        opening.baseCm = Math.round(mToCm(opening.base ?? 0));
+      }
+      opening.wall = opening.wall ?? defaultWall;
+    });
+    return openings;
+  }
+
   function normalizeRoomsFromCm(rooms: GalleryRoom[]) {
     rooms.forEach((room) => {
       if (room.widthCm != null) {
@@ -82,30 +123,7 @@ export function createSceneConfigController(deps: SceneConfigControllerDeps) {
         room.heightCm = Math.round(room.height * CM_PER_M);
       }
 
-      room.openings = Array.isArray(room.openings) ? room.openings : [];
-      room.openings.forEach((opening) => {
-        if (opening.centerCm != null) {
-          opening.center = cmToM(opening.centerCm);
-        } else {
-          opening.centerCm = Math.round(mToCm(opening.center ?? 0));
-        }
-        if (opening.widthCm != null) {
-          opening.width = cmToM(opening.widthCm);
-        } else {
-          opening.widthCm = Math.round(mToCm(opening.width ?? 0));
-        }
-        if (opening.heightCm != null) {
-          opening.height = cmToM(opening.heightCm);
-        } else {
-          opening.heightCm = Math.round(mToCm(opening.height ?? room.height));
-        }
-        if (opening.baseCm != null) {
-          opening.base = cmToM(opening.baseCm);
-        } else {
-          opening.baseCm = Math.round(mToCm(opening.base ?? 0));
-        }
-        opening.wall = opening.wall ?? "north";
-      });
+      room.openings = normalizeWallOpeningsFromCm(room.openings, room.height, "north");
     });
   }
 
@@ -144,6 +162,7 @@ export function createSceneConfigController(deps: SceneConfigControllerDeps) {
       } else {
         wall.thicknessCm = Math.round(mToCm(wall.thickness ?? 16));
       }
+      wall.openings = normalizeWallOpeningsFromCm(wall.openings, wall.height ?? cmToM(300), "north");
     });
   }
 
@@ -272,8 +291,9 @@ export function createSceneConfigController(deps: SceneConfigControllerDeps) {
     syncRoomOptions(cfg.rooms);
     normalizePaintings(cfg.paintings);
 
+    const roomOrder = new Map(cfg.rooms.map((room, index) => [room.id, index]));
     cfg.rooms.forEach((room) => {
-      buildRoom(room, wallColor, ceilingColor, floorMaterial);
+      buildRoom(room, wallColor, ceilingColor, floorMaterial, cfg.rooms, roomOrder);
     });
     buildCustomWalls(cfg, wallColor);
 
@@ -338,10 +358,155 @@ export function createSceneConfigController(deps: SceneConfigControllerDeps) {
     });
   }
 
+  function asNonEmptyString(value: unknown): string {
+    if (typeof value !== "string") {
+      return "";
+    }
+    return value.trim();
+  }
+
+  function parseCatalogDimensions(value: string): { heightCm: number; widthCm: number } | null {
+    const normalized = value.replace(/,/g, ".").trim();
+    if (!normalized) {
+      return null;
+    }
+    const match = normalized.match(/(\d+(?:\.\d+)?)\s*[x×]\s*(\d+(?:\.\d+)?)/i);
+    if (!match) {
+      return null;
+    }
+
+    const heightCm = Number(match[1]);
+    const widthCm = Number(match[2]);
+    if (!Number.isFinite(heightCm) || !Number.isFinite(widthCm) || heightCm <= 0 || widthCm <= 0) {
+      return null;
+    }
+    return { heightCm, widthCm };
+  }
+
+  function getCatalogWorks(payload: unknown): Array<Record<string, unknown>> {
+    if (!payload || typeof payload !== "object") {
+      return [];
+    }
+
+    const root = payload as { works?: unknown; catalog?: { works?: unknown } };
+    const rawWorks = Array.isArray(root.works) ? root.works : Array.isArray(root.catalog?.works) ? root.catalog.works : [];
+    return rawWorks.filter((work): work is Record<string, unknown> => Boolean(work) && typeof work === "object");
+  }
+
+  function buildWorkSynopsis(work: Record<string, unknown>, dimensionsLabel: string): Record<string, string> {
+    const synopsis: Record<string, string> = {};
+    const author = asNonEmptyString(work.author);
+    const year = asNonEmptyString(work.year);
+    const type = asNonEmptyString(work.type);
+    const technique = asNonEmptyString(work.technique);
+    const inventory = asNonEmptyString(work.inventory);
+    const location = asNonEmptyString(work.location);
+    const notes = asNonEmptyString(work.notes);
+
+    if (author) {
+      synopsis.Artista = author;
+    }
+    if (year) {
+      synopsis.Anno = year;
+    }
+    if (type) {
+      synopsis.Tipo = type;
+    }
+    if (technique) {
+      synopsis.Tecnica = technique;
+    }
+    if (dimensionsLabel) {
+      synopsis.Dimensioni = dimensionsLabel;
+    }
+    if (inventory) {
+      synopsis.Inventario = inventory;
+    }
+    if (location) {
+      synopsis.Collocazione = location;
+    }
+    if (notes) {
+      synopsis.Note = notes;
+    }
+    return synopsis;
+  }
+
+  function importCatalogWorks(catalogData: unknown, options: CatalogImportOptions = {}): CatalogImportReport {
+    const replaceExisting = options.replaceExisting === true;
+    const works = getCatalogWorks(catalogData);
+    if (!works.length) {
+      throw new Error("Formato catalogo.json non valido: catalog.works non trovato");
+    }
+
+    const cfg = status.refs.getConfig();
+    if (replaceExisting) {
+      cfg.paintings = [];
+      cardState.paintingId = null;
+      uiState.selectedPaintingId = null;
+      deps.getClosePaintingCard?.();
+    }
+    const defaultRoomId = cfg.rooms[0]?.id ?? "";
+    let imported = 0;
+    let skipped = 0;
+
+    works.forEach((work, index) => {
+      const providedId = asNonEmptyString(work.id);
+      const paintingId = providedId || nextPaintingId(cfg.paintings, paintingRegistry);
+      if (cfg.paintings.some((painting) => painting.id === paintingId)) {
+        skipped += 1;
+        return;
+      }
+
+      const title = asNonEmptyString(work.title) || paintingId || `Opera ${index + 1}`;
+      const rawDimensions = asNonEmptyString((work as { dimensioni?: unknown }).dimensioni) || asNonEmptyString(work.dimensions);
+      const parsedDimensions = parseCatalogDimensions(rawDimensions);
+      const dimensionsLabel = parsedDimensions ? `${parsedDimensions.heightCm}x${parsedDimensions.widthCm} cm` : rawDimensions;
+      const synopsis = buildWorkSynopsis(work, dimensionsLabel);
+      const summary = [
+        asNonEmptyString(work.author),
+        asNonEmptyString(work.year),
+        asNonEmptyString(work.technique),
+        asNonEmptyString(work.type),
+      ].filter(Boolean);
+      const notes = asNonEmptyString(work.notes);
+      const description = notes || summary.join(" - ");
+      const image = asNonEmptyString(work.imageUrl) || createPlaceholderPaintingImage(title || "Opera");
+
+      cfg.paintings.push(
+        createPaintingConfigModel({
+          id: paintingId,
+          title,
+          description,
+          synopsis,
+          image,
+          roomId: defaultRoomId,
+          wall: "north",
+          offset: 1.2,
+          centerY: 1.65,
+          widthCm: parsedDimensions?.widthCm ?? 140,
+          heightCm: parsedDimensions?.heightCm ?? 105,
+          placed: false,
+        })
+      );
+      imported += 1;
+    });
+
+    if (replaceExisting) {
+      rebuildSceneFromConfig();
+    }
+
+    return {
+      total: works.length,
+      imported,
+      skipped,
+      replacedExisting: replaceExisting,
+    };
+  }
+
   return {
     buildWorld,
     rebuildSceneFromConfig,
     loadShowConfig,
     createNewCatalogPainting,
+    importCatalogWorks,
   };
 }

@@ -2,6 +2,12 @@ import type { AppContext } from "./appServices";
 import { createPseudoPaintingCardViewModel, toFilmstripItemViewModel } from "./paintingModels";
 import type { GalleryPainting, PaintingRegistryEntry, PaintingSpot } from "./types";
 
+type DeletePaintingEntryOptions = {
+  closePaintingCard?: boolean;
+  refreshFilmstrip?: boolean;
+  deferResourceDisposal?: boolean;
+};
+
 type FilmstripControllerDeps = {
   app: AppContext;
   createNewCatalogPainting: () => GalleryPainting;
@@ -9,7 +15,7 @@ type FilmstripControllerDeps = {
   showEditPanelForPainting: (painting: GalleryPainting) => void;
   closePaintingCard: () => void;
   setEditMode: (enabled: boolean) => void;
-  getDeletePaintingEntry: () => ((entry: PaintingRegistryEntry) => void) | undefined;
+  getDeletePaintingEntry: () => ((entry: PaintingRegistryEntry, options?: DeletePaintingEntryOptions) => void) | undefined;
 };
 
 export function createFilmstripController(deps: FilmstripControllerDeps) {
@@ -110,7 +116,7 @@ export function createFilmstripController(deps: FilmstripControllerDeps) {
       }
       const entry = paintingRegistry.get(paintingId);
       if (entry) {
-        getDeletePaintingEntry()?.(entry);
+        getDeletePaintingEntry()?.(entry, { closePaintingCard: false, refreshFilmstrip: false, deferResourceDisposal: true });
       }
       config.paintings.splice(idx, 1);
       if (uiState.selectedPaintingId === paintingId) {
@@ -119,7 +125,7 @@ export function createFilmstripController(deps: FilmstripControllerDeps) {
       if (cardState.paintingId === paintingId) {
         closePaintingCard();
       }
-      renderFilmstrip();
+      item.remove();
       return;
     }
     const item = target?.closest(".filmstrip-item") as HTMLElement | null;

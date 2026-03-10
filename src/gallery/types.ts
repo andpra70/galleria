@@ -1,6 +1,7 @@
 import * as THREE_NS from "three";
 
 export type WallSide = 'north' | 'south' | 'east' | 'west';
+export type WallOpeningType = "door" | "window" | "opening";
 
 export interface PaintingLightOffset {
   x?: number;
@@ -44,6 +45,8 @@ export interface GalleryPainting {
 }
 
 export interface GalleryRoomOpening {
+  id?: string;
+  type?: WallOpeningType;
   wall?: WallSide | string;
   center?: number;
   centerCm?: number;
@@ -83,6 +86,7 @@ export interface CustomWallConfig {
   heightCm?: number;
   thickness?: number;
   thicknessCm?: number;
+  openings?: GalleryRoomOpening[];
 }
 
 export interface VisitorConfig {
@@ -103,6 +107,23 @@ export interface RenderingConfig {
   diffuseAmbient?: number;
   cameraFov?: number;
   defaultPaintingHeight?: number;
+}
+
+export interface ExhibitionLocationConfig {
+  name?: string;
+  lat?: number;
+  lng?: number;
+  zoom?: number;
+}
+
+export interface ExhibitionConfig {
+  startDate?: string;
+  endDate?: string;
+  whenText?: string;
+  doveText?: string;
+  indirizzoCompleto?: string;
+  introductionMd?: string;
+  location?: ExhibitionLocationConfig;
 }
 
 export interface FloorTextureConfig {
@@ -127,6 +148,7 @@ export interface ShowConfig {
   customWalls?: CustomWallConfig[];
   visitor?: VisitorConfig;
   rendering?: RenderingConfig;
+  exhibition?: ExhibitionConfig;
 }
 
 export interface FilmstripItemViewModel {

@@ -1,8 +1,8 @@
 // @ts-check
-import { renderHelpPanel } from './helpPanel';
+import { renderConfigPanel } from './configPanel';
 import { renderMapTools } from './mapTools';
 
 /** @returns {string} */
 export function renderVisualControls() {
-  return `${renderHelpPanel()}${renderMapTools()}`;
+  return `${renderConfigPanel()}${renderMapTools()}`;
 }

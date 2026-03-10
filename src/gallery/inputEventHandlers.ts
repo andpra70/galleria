@@ -1,5 +1,6 @@
 import * as THREE_NS from "three";
 import { getFirstJsonFile } from "./files";
+import { resolveAppUrl } from "./url";
 import type { AppContext } from "./appServices";
 import type { PaintingRegistryEntry, PaintingSpot } from "./types";
 
@@ -31,7 +32,13 @@ type InputEventHandlersDeps = {
   showEditPanelForEntry: (entry: PaintingRegistryEntry) => void;
   closePaintingCard: () => void;
   loadShowConfig: (nextConfig: unknown) => void;
+  importCatalogWorks: (
+    catalogData: unknown,
+    options?: { replaceExisting?: boolean }
+  ) => { total: number; imported: number; skipped: number; replacedExisting: boolean };
+  setEditMode: (enabled: boolean) => void;
   renderFilmstrip: () => void;
+  syncConfigPanel: () => void;
   actions: InteractionActions;
 };
 
@@ -46,16 +53,46 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
     showEditPanelForEntry,
     closePaintingCard,
     loadShowConfig,
+    importCatalogWorks,
+    setEditMode,
     renderFilmstrip,
+    syncConfigPanel,
     actions,
   } = deps;
   const { status } = app;
   const { mapState, visitor, movement, touchState, dragPainting, uiState } = status;
   const { THREE, raycaster } = app.runtime;
-  const { minimapCanvas, helpPanel } = app.dom;
+  const { minimapCanvas, configPanel } = app.dom;
   const { paintingPickMeshes, paintingRegistry } = app.collections;
   const { minimapClientToWorld } = app.helpers;
   const { clampToWalkable, moveVisitorTo, setPointerRay, placeCatalogPaintingAtWall, handleWallCreateClick, handleFloorMove } = actions;
+
+  function isCatalogPayload(value: unknown): boolean {
+    if (!value || typeof value !== "object") {
+      return false;
+    }
+    const candidate = value as { works?: unknown; catalog?: { works?: unknown } };
+    return Array.isArray(candidate.works) || Array.isArray(candidate.catalog?.works);
+  }
+
+  function askReplaceExistingPaintings(): boolean {
+    return window.confirm(
+      "Eliminare le opere gia presenti prima di importare catalogo.json?\n\nOK = elimina le opere esistenti\nAnnulla = mantieni le opere esistenti"
+    );
+  }
+
+  function applyCatalogImport(loaded: unknown, replaceExisting: boolean) {
+    const report = importCatalogWorks(loaded, { replaceExisting });
+    if (!uiState.editMode) {
+      setEditMode(true);
+    } else if (!report.replacedExisting) {
+      renderFilmstrip();
+    }
+    syncConfigPanel();
+    window.alert(
+      `Catalogo caricato: ${report.imported}/${report.total} opere importate${report.skipped ? `, ${report.skipped} gia presenti` : ""}.`
+    );
+  }
 
   function clearMovementRoute() {
     movement.route = [];
@@ -291,24 +328,24 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
     showEditPanelForEntry(entry);
   }
 
-  function onHelpPanelDragOver(event: DragEvent) {
+  function onConfigPanelDragOver(event: DragEvent) {
     const jsonFile = getFirstJsonFile(event.dataTransfer);
     if (!jsonFile) {
       return;
     }
     event.preventDefault();
-    helpPanel.classList.add("drop-target");
+    configPanel.classList.add("drop-target");
   }
 
-  function onHelpPanelDragLeave(event: DragEvent) {
+  function onConfigPanelDragLeave(event: DragEvent) {
     event.preventDefault();
-    helpPanel.classList.remove("drop-target");
+    configPanel.classList.remove("drop-target");
   }
 
-  async function onHelpPanelDrop(event: DragEvent) {
+  async function onConfigPanelDrop(event: DragEvent) {
     const jsonFile = getFirstJsonFile(event.dataTransfer);
     event.preventDefault();
-    helpPanel.classList.remove("drop-target");
+    configPanel.classList.remove("drop-target");
     if (!jsonFile) {
       return;
     }
@@ -316,10 +353,20 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
     try {
       const raw = await jsonFile.text();
       const loaded = JSON.parse(raw);
-      loadShowConfig(loaded);
+      if (app.helpers.isValidShowConfig(loaded)) {
+        loadShowConfig(loaded);
+        syncConfigPanel();
+        return;
+      }
+      if (isCatalogPayload(loaded)) {
+        const replaceExisting = askReplaceExistingPaintings();
+        applyCatalogImport(loaded, replaceExisting);
+        return;
+      }
+      throw new Error("Formato JSON non supportato");
     } catch (error) {
-      console.error("Errore caricamento mostra.json:", error);
-      window.alert("File mostra.json non valido.");
+      console.error("Errore caricamento JSON dal pannello:", error);
+      window.alert("JSON non valido. Usa mostra.json o catalogo.json.");
     }
   }
 
@@ -332,6 +379,21 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
     a.download = "mostra.json";
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  async function onLoadCatalogJson() {
+    try {
+      const response = await fetch(resolveAppUrl("config/catalogo.json"));
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const loaded = await response.json();
+      const replaceExisting = askReplaceExistingPaintings();
+      applyCatalogImport(loaded, replaceExisting);
+    } catch (error) {
+      console.error("Errore caricamento catalogo.json:", error);
+      window.alert("Impossibile caricare catalogo.json.");
+    }
   }
 
   function onMinimapClick(event: MouseEvent) {
@@ -364,10 +426,11 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
     onTouchCancel,
     onCanvasDragOver,
     onCanvasDrop,
-    onHelpPanelDragOver,
-    onHelpPanelDragLeave,
-    onHelpPanelDrop,
+    onConfigPanelDragOver,
+    onConfigPanelDragLeave,
+    onConfigPanelDrop,
     onSaveShowJson,
+    onLoadCatalogJson,
     onMinimapClick,
   };
 }
