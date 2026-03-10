@@ -2,8 +2,16 @@ export function renderConfigPanel() {
   return `
     <section id="config-panel" aria-label="Configurazione mostra">
       <div id="config-toolbar" role="toolbar" aria-label="Import export configurazione">
-        <button id="load-catalog-json" type="button" title="Importa catalogo">⭳ Import</button>
-        <button id="save-show-json" type="button" title="Esporta configurazione">⭱ Export</button>
+        <details id="config-actions-menu" class="config-actions-menu">
+          <summary id="config-actions-menu-toggle" aria-label="Menu configurazione">☰ Menu</summary>
+          <div class="config-actions-menu-list" role="menu" aria-label="Azioni configurazione">
+            <button id="config-save-local" type="button" role="menuitem" title="Salva configurazione in IndexedDB locale">Salva</button>
+            <button id="config-load-local" type="button" role="menuitem" title="Carica configurazione da IndexedDB locale">Carica</button>
+            <button id="config-export-json" type="button" role="menuitem" title="Esporta mostra.json">Esporta JSON</button>
+            <button id="config-import-json" type="button" role="menuitem" title="Importa mostra.json">Importa JSON</button>
+            <button id="config-import-catalog-json" type="button" role="menuitem" title="Importa config/catalogo.json">Importa catalogo JSON</button>
+          </div>
+        </details>
         <button id="edit-mode-toggle" type="button" aria-pressed="false">✎ Edit: OFF</button>
       </div>
 
@@ -80,57 +88,82 @@ export function renderConfigPanel() {
       </div>
 
       <div class="config-tab-panel" data-config-tab-panel="gallery-map" role="tabpanel" hidden>
-        <div id="config-gallery-map-toolbar">
-          <button type="button" class="config-map-tool active" data-map-tool="room" title="Disegna o sposta stanza">▭ Stanza</button>
-          <button type="button" class="config-map-tool" data-map-tool="wall" title="Disegna muro">┃ Muro</button>
-          <button type="button" class="config-map-tool" data-map-tool="opening" title="Aggiungi apertura">⊔ Apertura</button>
-          <button type="button" class="config-map-tool danger" data-map-tool="delete-opening" title="Rimuovi apertura">⌫ Apertura</button>
-          <button type="button" class="config-map-tool danger" data-map-tool="delete-wall" title="Rimuovi muro custom">⌦ Muro</button>
-          <button type="button" class="config-map-toggle active" id="config-map-toggle-snap" aria-pressed="true" title="Snap a griglia 20cm">▦ Snap</button>
-          <button type="button" class="config-map-toggle active" id="config-map-toggle-magnet" aria-pressed="true" title="Magnet a elementi vicini">⌖ Magnet</button>
-          <button type="button" id="config-map-delete-room" disabled title="Elimina stanza selezionata">⌫ Stanza</button>
-          <span class="config-map-snap">Griglia: 20 cm</span>
+        <div id="config-gallery-map-tabs" class="config-subtabs" role="tablist" aria-label="Sezioni editor stanze">
+          <button
+            type="button"
+            class="config-subtab active"
+            role="tab"
+            aria-selected="true"
+            data-gallery-map-subtab="editor"
+          >
+            Editor
+          </button>
+          <button
+            type="button"
+            class="config-subtab"
+            role="tab"
+            aria-selected="false"
+            data-gallery-map-subtab="params"
+          >
+            Parametri
+          </button>
         </div>
 
-        <div class="config-inline-fields">
-          <label class="config-field">
-            <span>H muro (cm)</span>
-            <input id="config-map-wall-height-cm" type="number" step="10" min="100" value="300" />
-          </label>
-          <label class="config-field">
-            <span>Spessore muro (cm)</span>
-            <input id="config-map-wall-thickness-cm" type="number" step="1" min="5" value="16" />
-          </label>
+        <div class="config-gallery-map-subtab-panel active" data-gallery-map-subtab-panel="editor" role="tabpanel">
+          <div id="config-gallery-map-toolbar">
+            <button type="button" class="config-map-tool active" data-map-tool="room" title="Disegna o sposta stanza">▭ Stanza</button>
+            <button type="button" class="config-map-tool" data-map-tool="wall" title="Disegna muro">┃ Muro</button>
+            <button type="button" class="config-map-tool" data-map-tool="opening" title="Aggiungi apertura">⊔ Apertura</button>
+            <button type="button" class="config-map-tool danger" data-map-tool="delete-opening" title="Rimuovi apertura">⌫ Apertura</button>
+            <button type="button" class="config-map-tool danger" data-map-tool="delete-wall" title="Rimuovi muro custom">⌦ Muro</button>
+            <button type="button" class="config-map-toggle active" id="config-map-toggle-snap" aria-pressed="true" title="Snap a griglia 20cm">▦ Snap</button>
+            <button type="button" class="config-map-toggle active" id="config-map-toggle-magnet" aria-pressed="true" title="Magnet a elementi vicini">⌖ Magnet</button>
+            <button type="button" id="config-map-delete-room" disabled title="Elimina stanza selezionata">⌫ Stanza</button>
+            <span class="config-map-snap">Griglia: 20 cm</span>
+          </div>
+
+          <div id="config-gallery-map-editor-wrap">
+            <svg id="config-gallery-map-editor" aria-label="Editor mappa galleria"></svg>
+          </div>
         </div>
 
-        <div class="config-inline-fields">
-          <label class="config-field">
-            <span>Tipo apertura</span>
-            <select id="config-map-opening-type">
-              <option value="door">Porta</option>
-              <option value="window">Finestra</option>
-              <option value="opening">Apertura</option>
-            </select>
-          </label>
-          <label class="config-field">
-            <span>Larghezza apertura (cm)</span>
-            <input id="config-map-opening-width-cm" type="number" step="5" min="20" value="120" />
-          </label>
-        </div>
+        <div class="config-gallery-map-subtab-panel" data-gallery-map-subtab-panel="params" role="tabpanel" hidden>
+          <div class="config-inline-fields">
+            <label class="config-field">
+              <span>H muro (cm)</span>
+              <input id="config-map-wall-height-cm" type="number" step="10" min="100" value="300" />
+            </label>
+            <label class="config-field">
+              <span>Spessore muro (cm)</span>
+              <input id="config-map-wall-thickness-cm" type="number" step="1" min="5" value="16" />
+            </label>
+          </div>
 
-        <div class="config-inline-fields">
-          <label class="config-field">
-            <span>Base apertura (cm)</span>
-            <input id="config-map-opening-base-cm" type="number" step="5" min="0" value="0" />
-          </label>
-          <label class="config-field">
-            <span>Altezza apertura (cm)</span>
-            <input id="config-map-opening-height-cm" type="number" step="5" min="20" value="220" />
-          </label>
-        </div>
+          <div class="config-inline-fields">
+            <label class="config-field">
+              <span>Tipo apertura</span>
+              <select id="config-map-opening-type">
+                <option value="door">Porta</option>
+                <option value="window">Finestra</option>
+                <option value="opening">Apertura</option>
+              </select>
+            </label>
+            <label class="config-field">
+              <span>Larghezza apertura (cm)</span>
+              <input id="config-map-opening-width-cm" type="number" step="5" min="20" value="120" />
+            </label>
+          </div>
 
-        <div id="config-gallery-map-editor-wrap">
-          <svg id="config-gallery-map-editor" aria-label="Editor mappa galleria"></svg>
+          <div class="config-inline-fields">
+            <label class="config-field">
+              <span>Base apertura (cm)</span>
+              <input id="config-map-opening-base-cm" type="number" step="5" min="0" value="0" />
+            </label>
+            <label class="config-field">
+              <span>Altezza apertura (cm)</span>
+              <input id="config-map-opening-height-cm" type="number" step="5" min="20" value="220" />
+            </label>
+          </div>
         </div>
       </div>
 

@@ -2,8 +2,11 @@ type InputElements = {
   canvas: HTMLCanvasElement;
   minimapCanvas: HTMLCanvasElement;
   configPanel: HTMLElement;
-  saveShowJsonBtn: HTMLButtonElement;
-  loadCatalogJsonBtn: HTMLButtonElement;
+  configSaveLocalBtn: HTMLButtonElement;
+  configLoadLocalBtn: HTMLButtonElement;
+  configExportJsonBtn: HTMLButtonElement;
+  configImportJsonBtn: HTMLButtonElement;
+  configImportCatalogJsonBtn: HTMLButtonElement;
   artCardClose: HTMLButtonElement;
   editModeToggle: HTMLButtonElement;
   artEditMoveLeft: HTMLButtonElement;
@@ -27,8 +30,11 @@ export function attachGalleryInput(elements: InputElements, handlers: InputHandl
     canvas,
     minimapCanvas,
     configPanel,
-    saveShowJsonBtn,
-    loadCatalogJsonBtn,
+    configSaveLocalBtn,
+    configLoadLocalBtn,
+    configExportJsonBtn,
+    configImportJsonBtn,
+    configImportCatalogJsonBtn,
     artCardClose,
     editModeToggle,
     artEditMoveLeft,
@@ -62,8 +68,11 @@ export function attachGalleryInput(elements: InputElements, handlers: InputHandl
     onConfigPanelDragOver,
     onConfigPanelDragLeave,
     onConfigPanelDrop,
-    onSaveShowJson,
-    onLoadCatalogJson,
+    onSaveLocalShow,
+    onLoadLocalShow,
+    onExportShowJson,
+    onImportShowJson,
+    onImportCatalogJson,
     closePaintingCard,
     onToggleEditMode,
     onEditMoveLeft,
@@ -101,8 +110,11 @@ export function attachGalleryInput(elements: InputElements, handlers: InputHandl
   configPanel.addEventListener("dragover", onConfigPanelDragOver);
   configPanel.addEventListener("dragleave", onConfigPanelDragLeave);
   configPanel.addEventListener("drop", onConfigPanelDrop);
-  saveShowJsonBtn.addEventListener("click", onSaveShowJson);
-  loadCatalogJsonBtn.addEventListener("click", onLoadCatalogJson);
+  configSaveLocalBtn.addEventListener("click", onSaveLocalShow);
+  configLoadLocalBtn.addEventListener("click", onLoadLocalShow);
+  configExportJsonBtn.addEventListener("click", onExportShowJson);
+  configImportJsonBtn.addEventListener("click", onImportShowJson);
+  configImportCatalogJsonBtn.addEventListener("click", onImportCatalogJson);
   artCardClose.addEventListener("click", closePaintingCard);
   editModeToggle.addEventListener("click", onToggleEditMode);
 

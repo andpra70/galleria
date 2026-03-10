@@ -17,7 +17,12 @@ type InteractionActions = {
   clampToWalkable: (point: THREE_NS.Vector3) => THREE_NS.Vector3 | null;
   moveVisitorTo: (target: THREE_NS.Vector3, focusTarget: THREE_NS.Vector3 | null) => void;
   setPointerRay: (clientX: number, clientY: number) => void;
-  placeCatalogPaintingAtWall: (paintingId: string, clientX: number, clientY: number) => boolean;
+  placeCatalogPaintingAtWall: (
+    paintingId: string,
+    clientX: number,
+    clientY: number,
+    options?: { openCard?: boolean }
+  ) => boolean;
   handleWallCreateClick: (clientX: number, clientY: number) => boolean;
   handleFloorMove: (clientX: number, clientY: number) => boolean;
 };
@@ -92,6 +97,67 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
     window.alert(
       `Catalogo caricato: ${report.imported}/${report.total} opere importate${report.skipped ? `, ${report.skipped} gia presenti` : ""}.`
     );
+  }
+
+  const LOCAL_SHOW_DB_NAME = "galleria_show_local_db";
+  const LOCAL_SHOW_DB_VERSION = 1;
+  const LOCAL_SHOW_STORE_NAME = "show_configs";
+  const LOCAL_SHOW_KEY = "current_show";
+
+  function openLocalShowDb() {
+    return new Promise<IDBDatabase>((resolve, reject) => {
+      const request = window.indexedDB.open(LOCAL_SHOW_DB_NAME, LOCAL_SHOW_DB_VERSION);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(LOCAL_SHOW_STORE_NAME)) {
+          db.createObjectStore(LOCAL_SHOW_STORE_NAME);
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error ?? new Error("Errore apertura IndexedDB"));
+    });
+  }
+
+  async function saveCurrentShowToLocalDb() {
+    const db = await openLocalShowDb();
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction(LOCAL_SHOW_STORE_NAME, "readwrite");
+        const store = tx.objectStore(LOCAL_SHOW_STORE_NAME);
+        const cloned = JSON.parse(JSON.stringify(status.refs.getConfig()));
+        store.put(cloned, LOCAL_SHOW_KEY);
+        tx.oncomplete = () => resolve();
+        tx.onabort = () => reject(tx.error ?? new Error("Transazione IndexedDB annullata"));
+        tx.onerror = () => reject(tx.error ?? new Error("Errore scrittura IndexedDB"));
+      });
+    } finally {
+      db.close();
+    }
+  }
+
+  async function loadShowFromLocalDb() {
+    const db = await openLocalShowDb();
+    try {
+      return await new Promise<unknown>((resolve, reject) => {
+        const tx = db.transaction(LOCAL_SHOW_STORE_NAME, "readonly");
+        const store = tx.objectStore(LOCAL_SHOW_STORE_NAME);
+        const request = store.get(LOCAL_SHOW_KEY);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error ?? new Error("Errore lettura IndexedDB"));
+      });
+    } finally {
+      db.close();
+    }
+  }
+
+  async function importShowJsonFromFile(file: File) {
+    const raw = await file.text();
+    const loaded = JSON.parse(raw);
+    if (!app.helpers.isValidShowConfig(loaded)) {
+      throw new Error("Formato mostra.json non valido");
+    }
+    loadShowConfig(loaded);
+    syncConfigPanel();
   }
 
   function clearMovementRoute() {
@@ -294,7 +360,7 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
     }
     const draggedPaintingId = event.dataTransfer?.getData("application/x-gallery-painting-id");
     if (draggedPaintingId) {
-      if (placeCatalogPaintingAtWall(draggedPaintingId, event.clientX, event.clientY)) {
+      if (placeCatalogPaintingAtWall(draggedPaintingId, event.clientX, event.clientY, { openCard: false })) {
         renderFilmstrip();
       }
       return;
@@ -370,7 +436,37 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
     }
   }
 
-  function onSaveShowJson() {
+  async function onSaveLocalShow() {
+    try {
+      await saveCurrentShowToLocalDb();
+      window.alert("Configurazione salvata in locale.");
+    } catch (error) {
+      console.error("Errore salvataggio locale IndexedDB:", error);
+      window.alert("Impossibile salvare in locale.");
+    }
+  }
+
+  async function onLoadLocalShow() {
+    try {
+      const loaded = await loadShowFromLocalDb();
+      if (!loaded) {
+        window.alert("Nessun salvataggio locale disponibile.");
+        return;
+      }
+      if (!app.helpers.isValidShowConfig(loaded)) {
+        window.alert("Il salvataggio locale non e valido.");
+        return;
+      }
+      loadShowConfig(loaded);
+      syncConfigPanel();
+      window.alert("Configurazione locale caricata.");
+    } catch (error) {
+      console.error("Errore caricamento locale IndexedDB:", error);
+      window.alert("Impossibile caricare da locale.");
+    }
+  }
+
+  function onExportShowJson() {
     const serialized = JSON.stringify(status.refs.getConfig(), null, 2);
     const blob = new Blob([serialized], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -381,7 +477,26 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
     URL.revokeObjectURL(url);
   }
 
-  async function onLoadCatalogJson() {
+  function onImportShowJson() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json,application/json";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) {
+        return;
+      }
+      try {
+        await importShowJsonFromFile(file);
+      } catch (error) {
+        console.error("Errore import mostra.json:", error);
+        window.alert("JSON non valido. Seleziona un file mostra.json.");
+      }
+    };
+    input.click();
+  }
+
+  async function onImportCatalogJson() {
     try {
       const response = await fetch(resolveAppUrl("config/catalogo.json"));
       if (!response.ok) {
@@ -429,8 +544,11 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
     onConfigPanelDragOver,
     onConfigPanelDragLeave,
     onConfigPanelDrop,
-    onSaveShowJson,
-    onLoadCatalogJson,
+    onSaveLocalShow,
+    onLoadLocalShow,
+    onExportShowJson,
+    onImportShowJson,
+    onImportCatalogJson,
     onMinimapClick,
   };
 }

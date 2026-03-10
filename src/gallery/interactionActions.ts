@@ -88,7 +88,13 @@ export function createInteractionActions(deps: InteractionActionsDeps) {
     return painting;
   }
 
-  function placeCatalogPaintingAtWall(paintingId: string, clientX: number, clientY: number) {
+  function placeCatalogPaintingAtWall(
+    paintingId: string,
+    clientX: number,
+    clientY: number,
+    options?: { openCard?: boolean }
+  ) {
+    const openCard = options?.openCard ?? true;
     const config = getConfig();
     const roomsById = getRoomsById();
     const painting = config.paintings.find((p) => p.id === paintingId);
@@ -127,8 +133,12 @@ export function createInteractionActions(deps: InteractionActionsDeps) {
       entry.painting.centerY = centerY;
       applyPaintingPlacement(entry);
       uiState.selectedPaintingId = painting.id;
-      openPaintingCard(entry.paintingSpot);
-      showEditPanelForEntry(entry);
+      if (openCard) {
+        openPaintingCard(entry.paintingSpot);
+        showEditPanelForEntry(entry);
+      } else {
+        closePaintingCard();
+      }
       return true;
     }
 
@@ -138,8 +148,12 @@ export function createInteractionActions(deps: InteractionActionsDeps) {
       return false;
     }
     uiState.selectedPaintingId = painting.id;
-    openPaintingCard(built.paintingSpot);
-    showEditPanelForEntry(built);
+    if (openCard) {
+      openPaintingCard(built.paintingSpot);
+      showEditPanelForEntry(built);
+    } else {
+      closePaintingCard();
+    }
     return true;
   }
 

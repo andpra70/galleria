@@ -89,8 +89,11 @@ const minimapCanvas = mustEl<HTMLCanvasElement>("minimap");
 const dragMeasureOverlaySvg = mustEl<SVGSVGElement>("drag-measure-overlay");
 const miniCtx = must2d(minimapCanvas);
 const configPanel = mustEl<HTMLDivElement>("config-panel");
-const saveShowJsonBtn = mustEl<HTMLButtonElement>("save-show-json");
-const loadCatalogJsonBtn = mustEl<HTMLButtonElement>("load-catalog-json");
+const configSaveLocalBtn = mustEl<HTMLButtonElement>("config-save-local");
+const configLoadLocalBtn = mustEl<HTMLButtonElement>("config-load-local");
+const configExportJsonBtn = mustEl<HTMLButtonElement>("config-export-json");
+const configImportJsonBtn = mustEl<HTMLButtonElement>("config-import-json");
+const configImportCatalogJsonBtn = mustEl<HTMLButtonElement>("config-import-catalog-json");
 const artCard = mustEl<HTMLElement>("art-card");
 const artCardTitle = mustEl<HTMLElement>("art-card-title");
 const artCardDescription = mustEl<HTMLElement>("art-card-description");
@@ -151,6 +154,10 @@ const configMapOpeningWidthCm = mustEl<HTMLInputElement>("config-map-opening-wid
 const configMapOpeningBaseCm = mustEl<HTMLInputElement>("config-map-opening-base-cm");
 const configMapOpeningHeightCm = mustEl<HTMLInputElement>("config-map-opening-height-cm");
 const configGalleryMapEditor = mustEl<SVGSVGElement>("config-gallery-map-editor");
+const configGalleryMapSubTabButtons = Array.from(
+  document.querySelectorAll<HTMLButtonElement>("#config-gallery-map-tabs .config-subtab")
+);
+const configGalleryMapSubTabPanels = Array.from(document.querySelectorAll<HTMLElement>("[data-gallery-map-subtab-panel]"));
 const configIntroMd = mustEl<HTMLTextAreaElement>("config-intro-md");
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -2415,6 +2422,28 @@ function ensureConfigLeafletMap() {
   });
 }
 
+function getActiveGalleryMapSubTab() {
+  return configGalleryMapSubTabButtons.find((button) => button.classList.contains("active"))?.dataset.galleryMapSubtab ?? "editor";
+}
+
+function setActiveGalleryMapSubTab(tabId: string) {
+  configGalleryMapSubTabButtons.forEach((button) => {
+    const selected = button.dataset.galleryMapSubtab === tabId;
+    button.classList.toggle("active", selected);
+    button.setAttribute("aria-selected", selected ? "true" : "false");
+  });
+  configGalleryMapSubTabPanels.forEach((panel) => {
+    const selected = panel.dataset.galleryMapSubtabPanel === tabId;
+    panel.classList.toggle("active", selected);
+    panel.hidden = !selected;
+  });
+  if (tabId === "editor") {
+    window.setTimeout(() => {
+      renderGalleryMapEditor();
+    }, 0);
+  }
+}
+
 function setActiveConfigTab(tabId: string) {
   configTabButtons.forEach((button) => {
     const selected = button.dataset.configTab === tabId;
@@ -2437,7 +2466,7 @@ function setActiveConfigTab(tabId: string) {
       renderWhenCalendar();
     }, 0);
   }
-  if (tabId === "gallery-map") {
+  if (tabId === "gallery-map" && getActiveGalleryMapSubTab() === "editor") {
     window.setTimeout(() => {
       renderGalleryMapEditor();
     }, 0);
@@ -2475,6 +2504,14 @@ function attachConfigPanel() {
       const tabId = button.dataset.configTab;
       if (tabId) {
         setActiveConfigTab(tabId);
+      }
+    });
+  });
+  configGalleryMapSubTabButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const tabId = button.dataset.galleryMapSubtab;
+      if (tabId) {
+        setActiveGalleryMapSubTab(tabId);
       }
     });
   });
@@ -2546,6 +2583,7 @@ function attachConfigPanel() {
   };
   configWhereLat.addEventListener("change", onLocationInputChanged);
   configWhereLng.addEventListener("change", onLocationInputChanged);
+  setActiveGalleryMapSubTab("editor");
   setActiveConfigTab("intro");
 }
 
@@ -2555,8 +2593,11 @@ function attachInput() {
       canvas,
       minimapCanvas,
       configPanel,
-      saveShowJsonBtn,
-      loadCatalogJsonBtn,
+      configSaveLocalBtn,
+      configLoadLocalBtn,
+      configExportJsonBtn,
+      configImportJsonBtn,
+      configImportCatalogJsonBtn,
       artCardClose,
       editModeToggle,
       artEditMoveLeft,
@@ -2605,8 +2646,11 @@ function attachInput() {
       onConfigPanelDragOver: inputEventHandlers.onConfigPanelDragOver,
       onConfigPanelDragLeave: inputEventHandlers.onConfigPanelDragLeave,
       onConfigPanelDrop: inputEventHandlers.onConfigPanelDrop,
-      onSaveShowJson: inputEventHandlers.onSaveShowJson,
-      onLoadCatalogJson: inputEventHandlers.onLoadCatalogJson,
+      onSaveLocalShow: inputEventHandlers.onSaveLocalShow,
+      onLoadLocalShow: inputEventHandlers.onLoadLocalShow,
+      onExportShowJson: inputEventHandlers.onExportShowJson,
+      onImportShowJson: inputEventHandlers.onImportShowJson,
+      onImportCatalogJson: inputEventHandlers.onImportCatalogJson,
       closePaintingCard,
       onToggleEditMode: () => setEditMode(!uiState.editMode),
       onEditMoveLeft: () => paintingEditorHandlers.onEditMove(-1, 0),
