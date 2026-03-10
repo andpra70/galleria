@@ -580,6 +580,25 @@ body,
   cursor: nesw-resize;
 }
 
+.gallery-map-opening-handle {
+  fill: #f8fafc;
+  stroke: #0f172a;
+  stroke-width: 2;
+  cursor: grab;
+}
+
+.gallery-map-opening-handle.start {
+  stroke: #0f766e;
+}
+
+.gallery-map-opening-handle.end {
+  stroke: #0e7490;
+}
+
+.gallery-map-opening-width {
+  pointer-events: none;
+}
+
 #art-card {
   pointer-events: auto;
   position: absolute;

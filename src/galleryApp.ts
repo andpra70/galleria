@@ -214,6 +214,7 @@ const GALLERY_SIZE_MAGNET_THRESHOLD_M = 0.22;
 const GALLERY_LIGHT_PICK_TOLERANCE_M = 0.45;
 const GALLERY_MAP_ZOOM_MIN = 0.35;
 const GALLERY_MAP_ZOOM_MAX = 7;
+const GALLERY_OPENING_MIN_WIDTH_M = 0.2;
 
 type GalleryMapTool = "room" | "wall" | "opening" | "delete-opening" | "delete-wall" | "light" | "delete-light";
 type GalleryMapDragAction =
@@ -223,11 +224,14 @@ type GalleryMapDragAction =
   | "moveRoom"
   | "resizeRoom"
   | "moveLight"
+  | "resizeOpeningStart"
+  | "resizeOpeningEnd"
   | "moveCameraStart"
   | "moveCameraTarget";
 type PlanPoint = { x: number; z: number };
 type PlanAssistMode = "room-create" | "room-move" | "wall-create" | "opening" | "generic";
 type RoomCorner = "nw" | "ne" | "sw" | "se";
+type OpeningHandleSide = "start" | "end";
 type GalleryMapRoomMoveState = {
   roomId: string;
   startPointer: PlanPoint;
@@ -254,6 +258,27 @@ type GalleryMapPanState = {
   startClientY: number;
   startPanX: number;
   startPanZ: number;
+};
+type GalleryMapOpeningRef =
+  | { kind: "room"; roomId: string; wall: WallSide; openingIndex: number }
+  | { kind: "customWall"; wallIndex: number; openingIndex: number };
+type GalleryMapOpeningResizeState = {
+  ref: GalleryMapOpeningRef;
+  handle: OpeningHandleSide;
+  startCenter: number;
+  startWidth: number;
+  startAlong: number;
+};
+type GalleryMapOpeningGeometry = {
+  ref: GalleryMapOpeningRef;
+  type: "door" | "window" | "opening";
+  center: number;
+  width: number;
+  base: number;
+  height: number;
+  wallFrom: PlanPoint;
+  wallTo: PlanPoint;
+  wallLength: number;
 };
 type PlanWallRef =
   | { kind: "room"; roomId: string; wall: WallSide; length: number; from: PlanPoint; to: PlanPoint }
@@ -353,6 +378,7 @@ const galleryMapEditorState: {
   movingRoom: GalleryMapRoomMoveState | null;
   resizingRoom: GalleryMapRoomResizeState | null;
   movingLight: GalleryMapLightMoveState | null;
+  resizingOpening: GalleryMapOpeningResizeState | null;
   panning: GalleryMapPanState | null;
   viewZoom: number;
   viewPanX: number;
@@ -371,6 +397,7 @@ const galleryMapEditorState: {
   movingRoom: null,
   resizingRoom: null,
   movingLight: null,
+  resizingOpening: null,
   panning: null,
   viewZoom: 1,
   viewPanX: 0,
@@ -1975,6 +2002,249 @@ function getOpeningHeightM(opening: GalleryRoomOpening) {
   return 0;
 }
 
+function toWallSide(value: unknown): WallSide | null {
+  if (value === "north" || value === "south" || value === "west" || value === "east") {
+    return value;
+  }
+  return null;
+}
+
+function resolveOpeningType(opening: GalleryRoomOpening): "door" | "window" | "opening" {
+  if (opening.type === "door" || opening.type === "window" || opening.type === "opening") {
+    return opening.type;
+  }
+  return "opening";
+}
+
+function openingRefMatches(a: GalleryMapOpeningRef, b: GalleryMapOpeningRef) {
+  if (a.kind !== b.kind) {
+    return false;
+  }
+  if (a.kind === "room" && b.kind === "room") {
+    return a.roomId === b.roomId && a.wall === b.wall && a.openingIndex === b.openingIndex;
+  }
+  if (a.kind === "customWall" && b.kind === "customWall") {
+    return a.wallIndex === b.wallIndex && a.openingIndex === b.openingIndex;
+  }
+  return false;
+}
+
+function computeOpeningAlongMetrics(centerArg: number, widthArg: number, wallLengthArg: number, minWidthArg = GALLERY_OPENING_MIN_WIDTH_M) {
+  const wallLength = Math.max(0.01, wallLengthArg);
+  const minWidth = Math.min(Math.max(0.05, minWidthArg), wallLength);
+  const rawWidth = Number(widthArg);
+  const width = clampNumber(Number.isFinite(rawWidth) && rawWidth > 0 ? rawWidth : minWidth, minWidth, wallLength);
+  const rawCenter = Number(centerArg);
+  const centerMin = width * 0.5;
+  const centerMax = Math.max(centerMin, wallLength - width * 0.5);
+  const center = clampNumber(Number.isFinite(rawCenter) ? rawCenter : centerMin, centerMin, centerMax);
+  return {
+    center,
+    width,
+    fromAlong: center - width * 0.5,
+    toAlong: center + width * 0.5,
+    wallLength,
+    minWidth,
+  };
+}
+
+function openingPointsFromAlong(wallFrom: PlanPoint, wallTo: PlanPoint, wallLengthArg: number, fromAlong: number, toAlong: number) {
+  const wallLength = Math.max(0.0001, wallLengthArg);
+  const ux = (wallTo.x - wallFrom.x) / wallLength;
+  const uz = (wallTo.z - wallFrom.z) / wallLength;
+  const clampedFrom = clampNumber(fromAlong, 0, wallLength);
+  const clampedTo = clampNumber(toAlong, 0, wallLength);
+  return {
+    from: { x: wallFrom.x + ux * clampedFrom, z: wallFrom.z + uz * clampedFrom },
+    to: { x: wallFrom.x + ux * clampedTo, z: wallFrom.z + uz * clampedTo },
+  };
+}
+
+function buildRoomOpeningGeometry(
+  room: GalleryRoom,
+  opening: GalleryRoomOpening,
+  openingIndex: number,
+  wallHint?: WallSide
+): GalleryMapOpeningGeometry {
+  const preview = getRoomEditorGeometry(room);
+  const wall = wallHint ?? toWallSide(opening.wall) ?? "north";
+  let wallFrom: PlanPoint = { x: preview.x, z: preview.z };
+  let wallTo: PlanPoint = { x: preview.x + preview.width, z: preview.z };
+  if (wall === "south") {
+    wallFrom = { x: preview.x, z: preview.z + preview.depth };
+    wallTo = { x: preview.x + preview.width, z: preview.z + preview.depth };
+  } else if (wall === "west") {
+    wallFrom = { x: preview.x, z: preview.z };
+    wallTo = { x: preview.x, z: preview.z + preview.depth };
+  } else if (wall === "east") {
+    wallFrom = { x: preview.x + preview.width, z: preview.z };
+    wallTo = { x: preview.x + preview.width, z: preview.z + preview.depth };
+  }
+  const wallLength = Math.hypot(wallTo.x - wallFrom.x, wallTo.z - wallFrom.z);
+  const metrics = computeOpeningAlongMetrics(getOpeningCenterM(opening), getOpeningWidthM(opening), wallLength);
+  return {
+    ref: { kind: "room", roomId: room.id, wall, openingIndex },
+    type: resolveOpeningType(opening),
+    center: metrics.center,
+    width: metrics.width,
+    base: getOpeningBaseM(opening),
+    height: getOpeningHeightM(opening),
+    wallFrom,
+    wallTo,
+    wallLength,
+  };
+}
+
+function buildCustomWallOpeningGeometry(
+  wall: { x1?: number; z1?: number; x2?: number; z2?: number; openings?: GalleryRoomOpening[] },
+  wallIndex: number,
+  opening: GalleryRoomOpening,
+  openingIndex: number
+): GalleryMapOpeningGeometry | null {
+  const wallFrom: PlanPoint = { x: Number(wall.x1 ?? 0), z: Number(wall.z1 ?? 0) };
+  const wallTo: PlanPoint = { x: Number(wall.x2 ?? 0), z: Number(wall.z2 ?? 0) };
+  const wallLength = Math.hypot(wallTo.x - wallFrom.x, wallTo.z - wallFrom.z);
+  if (wallLength < 0.05) {
+    return null;
+  }
+  const metrics = computeOpeningAlongMetrics(getOpeningCenterM(opening), getOpeningWidthM(opening), wallLength);
+  return {
+    ref: { kind: "customWall", wallIndex, openingIndex },
+    type: resolveOpeningType(opening),
+    center: metrics.center,
+    width: metrics.width,
+    base: getOpeningBaseM(opening),
+    height: getOpeningHeightM(opening),
+    wallFrom,
+    wallTo,
+    wallLength,
+  };
+}
+
+function resolveOpeningGeometryFromRef(ref: GalleryMapOpeningRef): GalleryMapOpeningGeometry | null {
+  if (ref.kind === "room") {
+    const room = config.rooms.find((candidate) => candidate.id === ref.roomId);
+    if (!room || !Array.isArray(room.openings) || ref.openingIndex < 0 || ref.openingIndex >= room.openings.length) {
+      return null;
+    }
+    const opening = room.openings[ref.openingIndex];
+    return buildRoomOpeningGeometry(room, opening, ref.openingIndex, ref.wall);
+  }
+  const walls = ensureCustomWallsArray();
+  if (ref.wallIndex < 0 || ref.wallIndex >= walls.length) {
+    return null;
+  }
+  const wall = walls[ref.wallIndex];
+  if (!Array.isArray(wall.openings) || ref.openingIndex < 0 || ref.openingIndex >= wall.openings.length) {
+    return null;
+  }
+  return buildCustomWallOpeningGeometry(wall, ref.wallIndex, wall.openings[ref.openingIndex], ref.openingIndex);
+}
+
+function computeResizedOpeningMetricsFromPointer(
+  geometry: GalleryMapOpeningGeometry,
+  resizing: GalleryMapOpeningResizeState,
+  rawPointer: PlanPoint
+) {
+  const pointer = applyPlanPointAssist(rawPointer, "opening");
+  const projected = projectPointToSegment(pointer, geometry.wallFrom, geometry.wallTo);
+  const along = clampNumber(projected.t * geometry.wallLength, 0, geometry.wallLength);
+  const base = computeOpeningAlongMetrics(resizing.startCenter, resizing.startWidth, geometry.wallLength);
+  const deltaAlong = along - resizing.startAlong;
+  let fromAlong = base.fromAlong;
+  let toAlong = base.toAlong;
+  if (resizing.handle === "start") {
+    const maxStart = Math.max(0, base.toAlong - base.minWidth);
+    fromAlong = clampNumber(base.fromAlong + deltaAlong, 0, maxStart);
+  } else {
+    const minEnd = Math.min(geometry.wallLength, base.fromAlong + base.minWidth);
+    toAlong = clampNumber(base.toAlong + deltaAlong, minEnd, geometry.wallLength);
+  }
+  const center = (fromAlong + toAlong) * 0.5;
+  const width = Math.max(base.minWidth, toAlong - fromAlong);
+  return computeOpeningAlongMetrics(center, width, geometry.wallLength);
+}
+
+function resolveOpeningDisplayMetrics(geometry: GalleryMapOpeningGeometry) {
+  const resizing = galleryMapEditorState.resizingOpening;
+  const pointer = galleryMapEditorState.dragCurrent;
+  const dragging =
+    galleryMapEditorState.dragAction === "resizeOpeningStart" || galleryMapEditorState.dragAction === "resizeOpeningEnd";
+  if (!dragging || !resizing || !pointer || !openingRefMatches(geometry.ref, resizing.ref)) {
+    return computeOpeningAlongMetrics(geometry.center, geometry.width, geometry.wallLength);
+  }
+  return computeResizedOpeningMetricsFromPointer(geometry, resizing, pointer);
+}
+
+function applyOpeningResizeFromDrag(rawPointer: PlanPoint) {
+  const resizing = galleryMapEditorState.resizingOpening;
+  if (!resizing) {
+    return;
+  }
+  const ref = resizing.ref;
+  const geometry = resolveOpeningGeometryFromRef(resizing.ref);
+  if (!geometry) {
+    return;
+  }
+  const nextMetrics = computeResizedOpeningMetricsFromPointer(geometry, resizing, rawPointer);
+  if (ref.kind === "room") {
+    const room = config.rooms.find((candidate) => candidate.id === ref.roomId);
+    if (!room || !Array.isArray(room.openings) || ref.openingIndex < 0 || ref.openingIndex >= room.openings.length) {
+      return;
+    }
+    const opening = room.openings[ref.openingIndex];
+    const previousCenter = getOpeningCenterM(opening);
+    const previousWidth = getOpeningWidthM(opening);
+    const previousBase = getOpeningBaseM(opening);
+    const previousHeight = getOpeningHeightM(opening);
+    const previousType = resolveOpeningType(opening);
+    if (Math.abs(previousCenter - nextMetrics.center) < 0.0001 && Math.abs(previousWidth - nextMetrics.width) < 0.0001) {
+      return;
+    }
+    opening.wall = ref.wall;
+    opening.center = nextMetrics.center;
+    opening.centerCm = Math.round(nextMetrics.center * CM_PER_M);
+    opening.width = nextMetrics.width;
+    opening.widthCm = Math.round(nextMetrics.width * CM_PER_M);
+    removeMirroredOpeningOnAdjacentRooms(room, ref.wall, {
+      type: previousType,
+      wall: ref.wall,
+      center: previousCenter,
+      width: previousWidth,
+      base: previousBase,
+      height: previousHeight,
+    });
+    mirrorOpeningOnAdjacentRooms(room, ref.wall, {
+      type: resolveOpeningType(opening),
+      center: nextMetrics.center,
+      width: nextMetrics.width,
+      base: getOpeningBaseM(opening),
+      height: getOpeningHeightM(opening),
+    });
+  } else {
+    const walls = ensureCustomWallsArray();
+    if (ref.wallIndex < 0 || ref.wallIndex >= walls.length) {
+      return;
+    }
+    const wall = walls[ref.wallIndex];
+    if (!Array.isArray(wall.openings) || ref.openingIndex < 0 || ref.openingIndex >= wall.openings.length) {
+      return;
+    }
+    const opening = wall.openings[ref.openingIndex];
+    const previousCenter = getOpeningCenterM(opening);
+    const previousWidth = getOpeningWidthM(opening);
+    if (Math.abs(previousCenter - nextMetrics.center) < 0.0001 && Math.abs(previousWidth - nextMetrics.width) < 0.0001) {
+      return;
+    }
+    opening.center = nextMetrics.center;
+    opening.centerCm = Math.round(nextMetrics.center * CM_PER_M);
+    opening.width = nextMetrics.width;
+    opening.widthCm = Math.round(nextMetrics.width * CM_PER_M);
+  }
+  rebuildSceneFromConfig();
+  renderGalleryMapEditor();
+}
+
 function distanceToInterval(value: number, from: number, to: number) {
   if (value < from) {
     return from - value;
@@ -2173,7 +2443,10 @@ function renderGalleryMapEditor() {
   const cameraTabActive = isGalleryMapSubTabActive("camera");
   const draggingCameraHandle =
     galleryMapEditorState.dragAction === "moveCameraStart" || galleryMapEditorState.dragAction === "moveCameraTarget";
-  configGalleryMapEditor.style.cursor = galleryMapEditorState.panning || draggingCameraHandle ? "grabbing" : "crosshair";
+  const draggingOpeningHandle =
+    galleryMapEditorState.dragAction === "resizeOpeningStart" || galleryMapEditorState.dragAction === "resizeOpeningEnd";
+  configGalleryMapEditor.style.cursor =
+    galleryMapEditorState.panning || draggingCameraHandle || draggingOpeningHandle ? "grabbing" : "crosshair";
 
   const gridLines: string[] = [];
   const step = GALLERY_GRID_SNAP_M;
@@ -2257,64 +2530,103 @@ function renderGalleryMapEditor() {
     })
     .join("");
 
-  const openingColor = (type?: string) => (type === "window" ? "#0284c7" : type === "door" ? "#16a34a" : "#b45309");
-  const roomOpenings = config.rooms
-    .flatMap((room) =>
-      (room.openings ?? []).map((opening) => {
-        const preview = getRoomEditorGeometry(room);
-        const roomX = preview.x;
-        const roomZ = preview.z;
-        const roomWidth = preview.width;
-        const roomDepth = preview.depth;
-        const center = opening.center ?? 0;
-        const widthM = opening.width ?? 1;
-        let from: PlanPoint = { x: roomX, z: roomZ };
-        let to: PlanPoint = { x: roomX, z: roomZ };
-        if (opening.wall === "north") {
-          from = { x: roomX + center - widthM * 0.5, z: roomZ };
-          to = { x: roomX + center + widthM * 0.5, z: roomZ };
-        } else if (opening.wall === "south") {
-          from = { x: roomX + center - widthM * 0.5, z: roomZ + roomDepth };
-          to = { x: roomX + center + widthM * 0.5, z: roomZ + roomDepth };
-        } else if (opening.wall === "west") {
-          from = { x: roomX, z: roomZ + center - widthM * 0.5 };
-          to = { x: roomX, z: roomZ + center + widthM * 0.5 };
-        } else {
-          from = { x: roomX + roomWidth, z: roomZ + center - widthM * 0.5 };
-          to = { x: roomX + roomWidth, z: roomZ + center + widthM * 0.5 };
-        }
-        const a = toScreen(from);
-        const b = toScreen(to);
-        return `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="${openingColor(opening.type)}" stroke-width="3" stroke-linecap="round" />`;
-      })
-    )
-    .join("");
-
-  const customWallOpenings = ensureCustomWallsArray()
-    .flatMap((wall) => {
-      const x1 = Number(wall.x1 ?? 0);
-      const z1 = Number(wall.z1 ?? 0);
-      const x2 = Number(wall.x2 ?? 0);
-      const z2 = Number(wall.z2 ?? 0);
-      const dx = x2 - x1;
-      const dz = z2 - z1;
-      const length = Math.hypot(dx, dz);
-      if (length < 0.05) {
-        return [];
+  const openingColor = (type: "door" | "window" | "opening") => (type === "window" ? "#0284c7" : type === "door" ? "#16a34a" : "#b45309");
+  const openingToolActive = galleryMapEditorState.tool === "opening";
+  const openingGeometries: GalleryMapOpeningGeometry[] = [];
+  config.rooms.forEach((room) => {
+    (room.openings ?? []).forEach((opening, openingIndex) => {
+      openingGeometries.push(buildRoomOpeningGeometry(room, opening, openingIndex));
+    });
+  });
+  ensureCustomWallsArray().forEach((wall, wallIndex) => {
+    (wall.openings ?? []).forEach((opening, openingIndex) => {
+      const geometry = buildCustomWallOpeningGeometry(wall, wallIndex, opening, openingIndex);
+      if (geometry) {
+        openingGeometries.push(geometry);
       }
-      const ux = dx / length;
-      const uz = dz / length;
-      return (wall.openings ?? []).map((opening) => {
-        const center = clampNumber(opening.center ?? 0, 0, length);
-        const widthM = Math.max(0.2, opening.width ?? 1);
-        const fromAlong = clampNumber(center - widthM * 0.5, 0, length);
-        const toAlong = clampNumber(center + widthM * 0.5, 0, length);
-        const from = { x: x1 + ux * fromAlong, z: z1 + uz * fromAlong };
-        const to = { x: x1 + ux * toAlong, z: z1 + uz * toAlong };
-        const a = toScreen(from);
-        const b = toScreen(to);
-        return `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="${openingColor(opening.type)}" stroke-width="4" stroke-linecap="round" />`;
-      });
+    });
+  });
+  const openingsSvg = openingGeometries
+    .map((geometry) => {
+      const metrics = resolveOpeningDisplayMetrics(geometry);
+      const points = openingPointsFromAlong(geometry.wallFrom, geometry.wallTo, geometry.wallLength, metrics.fromAlong, metrics.toAlong);
+      const a = toScreen(points.from);
+      const b = toScreen(points.to);
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const len = Math.hypot(dx, dy);
+      if (len < 0.8) {
+        return "";
+      }
+      const ux = dx / len;
+      const uy = dy / len;
+      const nx = -uy;
+      const ny = ux;
+      const isDoor = geometry.type === "door";
+      const isOpening = geometry.type === "opening";
+      const strokeMain = isDoor ? 5.8 : isOpening ? 5 : 4.8;
+      const strokeHalo = strokeMain + 4.2;
+      const capHalf = strokeMain + 2.4;
+      const capWidth = Math.max(2.2, strokeMain * 0.72);
+      const color = openingColor(geometry.type);
+      const startCapA = { x: a.x + nx * capHalf, y: a.y + ny * capHalf };
+      const startCapB = { x: a.x - nx * capHalf, y: a.y - ny * capHalf };
+      const endCapA = { x: b.x + nx * capHalf, y: b.y + ny * capHalf };
+      const endCapB = { x: b.x - nx * capHalf, y: b.y - ny * capHalf };
+      const resizing = galleryMapEditorState.resizingOpening;
+      const isResizingThis =
+        (galleryMapEditorState.dragAction === "resizeOpeningStart" || galleryMapEditorState.dragAction === "resizeOpeningEnd") &&
+        resizing &&
+        openingRefMatches(geometry.ref, resizing.ref);
+      const startHandleActive = isResizingThis && resizing?.handle === "start";
+      const endHandleActive = isResizingThis && resizing?.handle === "end";
+      const handleBaseAttrs =
+        geometry.ref.kind === "room"
+          ? `data-opening-kind="room" data-opening-room-id="${geometry.ref.roomId}" data-opening-wall="${geometry.ref.wall}" data-opening-index="${geometry.ref.openingIndex}"`
+          : `data-opening-kind="custom" data-opening-wall-index="${geometry.ref.wallIndex}" data-opening-index="${geometry.ref.openingIndex}"`;
+      const handlesSvg = openingToolActive
+        ? `
+          <circle cx="${a.x.toFixed(1)}" cy="${a.y.toFixed(1)}" r="${startHandleActive ? 7 : 5.8}" class="gallery-map-opening-handle start" ${handleBaseAttrs} data-opening-handle-side="start" />
+          <circle cx="${b.x.toFixed(1)}" cy="${b.y.toFixed(1)}" r="${endHandleActive ? 7 : 5.8}" class="gallery-map-opening-handle end" ${handleBaseAttrs} data-opening-handle-side="end" />
+        `
+        : "";
+      const widthLabel = (() => {
+        if (!isResizingThis) {
+          return "";
+        }
+        const widthText = `${Math.round(metrics.width * CM_PER_M)} cm`;
+        const labelW = Math.max(42, widthText.length * 6.7 + 10);
+        const labelH = 18;
+        const mid = { x: (a.x + b.x) * 0.5, y: (a.y + b.y) * 0.5 };
+        const labelX = mid.x + nx * (capHalf + 9);
+        const labelY = mid.y + ny * (capHalf + 9);
+        return `
+          <g class="gallery-map-opening-width">
+            <rect x="${(labelX - labelW * 0.5).toFixed(1)}" y="${(labelY - labelH * 0.5).toFixed(1)}" width="${labelW.toFixed(
+              1
+            )}" height="${labelH.toFixed(1)}" rx="5.5" fill="rgba(15,23,42,0.9)" />
+            <text x="${labelX.toFixed(1)}" y="${(labelY + 4).toFixed(1)}" text-anchor="middle" font-size="11" fill="#f8fafc">${widthText}</text>
+          </g>
+        `;
+      })();
+      return `
+        <g class="gallery-map-opening opening-${geometry.type}">
+          <line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(
+            1
+          )}" stroke="rgba(15,23,42,0.26)" stroke-width="${strokeHalo.toFixed(2)}" stroke-linecap="round" />
+          <line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(
+            1
+          )}" stroke="${color}" stroke-width="${strokeMain.toFixed(2)}" stroke-linecap="round" />
+          <line x1="${startCapA.x.toFixed(1)}" y1="${startCapA.y.toFixed(1)}" x2="${startCapB.x.toFixed(1)}" y2="${startCapB.y.toFixed(
+            1
+          )}" stroke="${color}" stroke-width="${capWidth.toFixed(2)}" stroke-linecap="round" />
+          <line x1="${endCapA.x.toFixed(1)}" y1="${endCapA.y.toFixed(1)}" x2="${endCapB.x.toFixed(1)}" y2="${endCapB.y.toFixed(
+            1
+          )}" stroke="${color}" stroke-width="${capWidth.toFixed(2)}" stroke-linecap="round" />
+          ${handlesSvg}
+          ${widthLabel}
+        </g>
+      `;
     })
     .join("");
 
@@ -2420,8 +2732,7 @@ function renderGalleryMapEditor() {
     ${gridLines.join("")}
     ${roomsSvg}
     ${customWalls}
-    ${roomOpenings}
-    ${customWallOpenings}
+    ${openingsSvg}
     ${paintingMarkersSvg}
     ${galleryLightLinks}
     ${galleryLightsSvg}
@@ -2777,6 +3088,7 @@ function attachGalleryMapEditor() {
         galleryMapEditorState.dragAction = "resizeRoom";
         galleryMapEditorState.movingLight = null;
         galleryMapEditorState.movingRoom = null;
+        galleryMapEditorState.resizingOpening = null;
         galleryMapEditorState.resizingRoom = {
           roomId: room.id,
           corner: handleCornerRaw,
@@ -2807,6 +3119,7 @@ function attachGalleryMapEditor() {
       galleryMapEditorState.dragAction = cameraHandle === "start" ? "moveCameraStart" : "moveCameraTarget";
       galleryMapEditorState.movingLight = null;
       galleryMapEditorState.movingRoom = null;
+      galleryMapEditorState.resizingOpening = null;
       galleryMapEditorState.resizingRoom = null;
       galleryMapEditorState.dragStart = rawPoint;
       galleryMapEditorState.dragCurrent = rawPoint;
@@ -2818,16 +3131,80 @@ function attachGalleryMapEditor() {
     if (cameraTabActive) {
       return;
     }
+    const openingHandleTarget = (event.target as Element | null)?.closest<SVGElement>("[data-opening-handle-side]");
+    const openingHandleSide = openingHandleTarget?.getAttribute("data-opening-handle-side");
+    if (galleryMapEditorState.tool === "opening" && (openingHandleSide === "start" || openingHandleSide === "end")) {
+      const openingKind = openingHandleTarget?.getAttribute("data-opening-kind");
+      let openingRef: GalleryMapOpeningRef | null = null;
+      if (openingKind === "room") {
+        const roomId = openingHandleTarget?.getAttribute("data-opening-room-id") ?? "";
+        const wallRaw = openingHandleTarget?.getAttribute("data-opening-wall");
+        const openingIndexRaw = Number(openingHandleTarget?.getAttribute("data-opening-index"));
+        const wall = toWallSide(wallRaw);
+        if (roomId && wall && Number.isInteger(openingIndexRaw) && openingIndexRaw >= 0) {
+          openingRef = {
+            kind: "room",
+            roomId,
+            wall,
+            openingIndex: openingIndexRaw,
+          };
+        }
+      } else if (openingKind === "custom") {
+        const wallIndexRaw = Number(openingHandleTarget?.getAttribute("data-opening-wall-index"));
+        const openingIndexRaw = Number(openingHandleTarget?.getAttribute("data-opening-index"));
+        if (Number.isInteger(wallIndexRaw) && wallIndexRaw >= 0 && Number.isInteger(openingIndexRaw) && openingIndexRaw >= 0) {
+          openingRef = {
+            kind: "customWall",
+            wallIndex: wallIndexRaw,
+            openingIndex: openingIndexRaw,
+          };
+        }
+      }
+
+      if (openingRef) {
+        const geometry = resolveOpeningGeometryFromRef(openingRef);
+        if (geometry) {
+          const rawPoint = getPlanPointFromEditorEvent(event);
+          const assistedStart = applyPlanPointAssist(rawPoint, "opening");
+          const projected = projectPointToSegment(assistedStart, geometry.wallFrom, geometry.wallTo);
+          const startAlong = clampNumber(projected.t * geometry.wallLength, 0, geometry.wallLength);
+          const currentMetrics = computeOpeningAlongMetrics(geometry.center, geometry.width, geometry.wallLength);
+          galleryMapEditorState.dragAction = openingHandleSide === "start" ? "resizeOpeningStart" : "resizeOpeningEnd";
+          galleryMapEditorState.movingLight = null;
+          galleryMapEditorState.movingRoom = null;
+          galleryMapEditorState.resizingRoom = null;
+          galleryMapEditorState.resizingOpening = {
+            ref: openingRef,
+            handle: openingHandleSide,
+            startCenter: currentMetrics.center,
+            startWidth: currentMetrics.width,
+            startAlong,
+          };
+          galleryMapEditorState.dragStart = rawPoint;
+          galleryMapEditorState.dragCurrent = rawPoint;
+          galleryMapEditorState.panning = null;
+          if (openingRef.kind === "room") {
+            setSelectedGalleryMapRoom(openingRef.roomId);
+          }
+          configGalleryMapEditor.setPointerCapture(event.pointerId);
+          renderGalleryMapEditor();
+        }
+      }
+      return;
+    }
     const rawPoint = getPlanPointFromEditorEvent(event);
     if (galleryMapEditorState.tool === "opening") {
+      galleryMapEditorState.resizingOpening = null;
       addOpeningAtPoint(applyPlanPointAssist(rawPoint, "opening"));
       return;
     }
     if (galleryMapEditorState.tool === "delete-opening") {
+      galleryMapEditorState.resizingOpening = null;
       removeOpeningAtPoint(applyPlanPointAssist(rawPoint, "opening"));
       return;
     }
     if (galleryMapEditorState.tool === "delete-wall") {
+      galleryMapEditorState.resizingOpening = null;
       removeCustomWallAtPoint(applyPlanPointAssist(rawPoint, "generic"));
       return;
     }
@@ -2844,6 +3221,7 @@ function attachGalleryMapEditor() {
           startX: Number(nearest.light.x ?? 0),
           startZ: Number(nearest.light.z ?? 0),
         };
+        galleryMapEditorState.resizingOpening = null;
         galleryMapEditorState.resizingRoom = null;
         galleryMapEditorState.dragStart = rawPoint;
         galleryMapEditorState.dragCurrent = rawPoint;
@@ -2856,6 +3234,7 @@ function attachGalleryMapEditor() {
       return;
     }
     if (galleryMapEditorState.tool === "delete-light") {
+      galleryMapEditorState.resizingOpening = null;
       deleteGalleryLightAtPoint(applyPlanPointAssist(rawPoint, "generic"));
       return;
     }
@@ -2866,6 +3245,7 @@ function attachGalleryMapEditor() {
         setSelectedGalleryMapRoom(clickedRoom.id);
         galleryMapEditorState.dragAction = "moveRoom";
         galleryMapEditorState.movingLight = null;
+        galleryMapEditorState.resizingOpening = null;
         galleryMapEditorState.resizingRoom = null;
         galleryMapEditorState.movingRoom = {
           roomId: clickedRoom.id,
@@ -2883,6 +3263,7 @@ function attachGalleryMapEditor() {
       setSelectedGalleryMapRoom(null);
       galleryMapEditorState.dragAction = "createRoom";
       galleryMapEditorState.movingLight = null;
+      galleryMapEditorState.resizingOpening = null;
       galleryMapEditorState.resizingRoom = null;
       const start = applyPlanPointAssist(rawPoint, "room-create");
       galleryMapEditorState.dragStart = start;
@@ -2890,6 +3271,7 @@ function attachGalleryMapEditor() {
     } else {
       galleryMapEditorState.dragAction = "createWall";
       galleryMapEditorState.movingLight = null;
+      galleryMapEditorState.resizingOpening = null;
       galleryMapEditorState.resizingRoom = null;
       const start = applyPlanPointAssist(rawPoint, "wall-create");
       galleryMapEditorState.dragStart = start;
@@ -2925,6 +3307,11 @@ function attachGalleryMapEditor() {
     if (galleryMapEditorState.dragAction === "moveCameraTarget") {
       galleryMapEditorState.dragCurrent = rawPoint;
       applyCameraPointFromMapDrag(rawPoint, "target");
+      return;
+    }
+    if (galleryMapEditorState.dragAction === "resizeOpeningStart" || galleryMapEditorState.dragAction === "resizeOpeningEnd") {
+      galleryMapEditorState.dragCurrent = rawPoint;
+      renderGalleryMapEditor();
       return;
     }
     if (galleryMapEditorState.dragAction === "createRoom") {
@@ -2969,6 +3356,8 @@ function attachGalleryMapEditor() {
       applyRoomResizeFromDrag(rawEnd);
     } else if (galleryMapEditorState.dragAction === "moveLight") {
       applyGalleryLightMoveFromDrag(rawEnd);
+    } else if (galleryMapEditorState.dragAction === "resizeOpeningStart" || galleryMapEditorState.dragAction === "resizeOpeningEnd") {
+      applyOpeningResizeFromDrag(rawEnd);
     } else if (galleryMapEditorState.dragAction === "moveCameraStart") {
       applyCameraPointFromMapDrag(rawEnd, "start");
     } else if (galleryMapEditorState.dragAction === "moveCameraTarget") {
@@ -2983,6 +3372,7 @@ function attachGalleryMapEditor() {
     galleryMapEditorState.movingRoom = null;
     galleryMapEditorState.resizingRoom = null;
     galleryMapEditorState.movingLight = null;
+    galleryMapEditorState.resizingOpening = null;
     galleryMapEditorState.panning = null;
     renderGalleryMapEditor();
   };
@@ -3026,6 +3416,7 @@ function attachGalleryMapEditor() {
     galleryMapEditorState.movingRoom = null;
     galleryMapEditorState.resizingRoom = null;
     galleryMapEditorState.movingLight = null;
+    galleryMapEditorState.resizingOpening = null;
     galleryMapEditorState.panning = null;
     renderGalleryMapEditor();
   });
