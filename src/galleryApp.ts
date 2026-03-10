@@ -155,6 +155,7 @@ const configMapFloorColor = mustEl<HTMLInputElement>("config-map-floor-color");
 const configMapWallColor = mustEl<HTMLInputElement>("config-map-wall-color");
 const configMapWallHeightCm = mustEl<HTMLInputElement>("config-map-wall-height-cm");
 const configMapWallThicknessCm = mustEl<HTMLInputElement>("config-map-wall-thickness-cm");
+const configMapMinPaintingDistanceM = mustEl<HTMLInputElement>("config-map-min-painting-distance-m");
 const configMapOpeningType = mustEl<HTMLSelectElement>("config-map-opening-type");
 const configMapOpeningWidthCm = mustEl<HTMLInputElement>("config-map-opening-width-cm");
 const configMapOpeningBaseCm = mustEl<HTMLInputElement>("config-map-opening-base-cm");
@@ -4102,6 +4103,13 @@ function syncConfigPanelFromConfig() {
   const rendering = ensureRenderingConfig();
   configMapFloorColor.value = normalizeColorInputValue(rendering.floorColor, "#c7c7c7");
   configMapWallColor.value = normalizeColorInputValue(rendering.wallColor, "#ffffff");
+  const configuredMinPaintingDistance = Number(config.visitor?.minPaintingDistance);
+  const minPaintingDistance = clampNumber(
+    Number.isFinite(configuredMinPaintingDistance) ? configuredMinPaintingDistance : visitor.minPaintingDistance,
+    0.2,
+    5
+  );
+  configMapMinPaintingDistanceM.value = minPaintingDistance.toFixed(2).replace(/\.00$/, "");
   const configuredFov = Number(config.rendering?.cameraFov);
   configCameraFov.value = String(Math.round(clampCameraFov(Number.isFinite(configuredFov) ? configuredFov : camera.fov)));
   const start = config.visitor?.start ?? {};
@@ -4229,6 +4237,13 @@ function attachConfigPanel() {
   configMapWallColor.addEventListener("input", scheduleRenderingColorsFromInputs);
   configMapFloorColor.addEventListener("change", applyRenderingColorsFromInputs);
   configMapWallColor.addEventListener("change", applyRenderingColorsFromInputs);
+  configMapMinPaintingDistanceM.addEventListener("change", () => {
+    const parsed = Number(configMapMinPaintingDistanceM.value);
+    const next = clampNumber(Number.isFinite(parsed) ? parsed : visitor.minPaintingDistance, 0.2, 5);
+    ensureVisitorConfig().minPaintingDistance = next;
+    visitor.minPaintingDistance = next;
+    configMapMinPaintingDistanceM.value = next.toFixed(2).replace(/\.00$/, "");
+  });
   configCameraCaptureViewBtn.addEventListener("click", () => {
     persistCurrentCameraConfigToShow();
     syncConfigPanelFromConfig();

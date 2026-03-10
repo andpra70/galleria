@@ -69,29 +69,62 @@ function resolveUiFlags(appEl: HTMLElement): GalleryUiFlags {
   };
 }
 
-function stripBaseFromPath(pathname: string): string {
-  const baseUrl = import.meta.env.BASE_URL || "/";
-  const basePath = new URL(baseUrl, window.location.origin).pathname.replace(/\/+$/, "");
-  const normalizedPath = pathname.replace(/\/+$/, "");
-  if (!basePath || basePath === "/") {
-    return normalizedPath;
+function normalizePath(path: string): string {
+  const trimmed = path.trim();
+  if (!trimmed) {
+    return "/";
   }
-  if (normalizedPath === basePath) {
+  const compact = trimmed.replace(/\/{2,}/g, "/");
+  if (compact === "/") {
+    return "/";
+  }
+  return compact.endsWith("/") ? compact.slice(0, -1) : compact;
+}
+
+function removePathPrefix(pathname: string, prefix: string): string | null {
+  const normalizedPath = normalizePath(pathname);
+  const normalizedPrefix = normalizePath(prefix);
+  if (normalizedPrefix === "/") {
+    return normalizedPath === "/" ? "" : normalizedPath.slice(1);
+  }
+  if (normalizedPath === normalizedPrefix) {
     return "";
   }
-  if (normalizedPath.startsWith(`${basePath}/`)) {
-    return normalizedPath.slice(basePath.length);
+  if (!normalizedPath.startsWith(`${normalizedPrefix}/`)) {
+    return null;
   }
-  return normalizedPath;
+  return normalizedPath.slice(normalizedPrefix.length + 1);
+}
+
+function stripBaseFromPath(pathname: string): string {
+  const baseFromDocument = new URL(".", document.baseURI).pathname;
+  const baseFromEnv = new URL(import.meta.env.BASE_URL || "/", window.location.origin).pathname;
+  const candidates = [baseFromDocument, baseFromEnv]
+    .map((candidate) => normalizePath(candidate))
+    .sort((a, b) => b.length - a.length);
+
+  for (const candidate of candidates) {
+    const withoutPrefix = removePathPrefix(pathname, candidate);
+    if (withoutPrefix !== null) {
+      return withoutPrefix;
+    }
+  }
+
+  const normalized = normalizePath(pathname);
+  return normalized === "/" ? "" : normalized.slice(1);
 }
 
 function resolveBootstrapFromRoute(): GalleryBootstrap {
   const relativePath = stripBaseFromPath(window.location.pathname);
-  const segments = relativePath
+  const rawSegments = relativePath
     .split("/")
     .map((segment) => segment.trim())
     .filter(Boolean);
-  const routeId = segments.length > 0 ? decodeURIComponent(segments[0]) : null;
+  if (rawSegments[0]?.toLowerCase() === "index.html") {
+    rawSegments.shift();
+  }
+  const decodedSegments = rawSegments.map((segment) => decodeURIComponent(segment));
+  const routeId = decodedSegments.length > 0 ? decodedSegments.join("/") : null;
   const fallbackConfigPath = "config/gallery.json";
   if (!routeId) {
     return {
@@ -100,9 +133,10 @@ function resolveBootstrapFromRoute(): GalleryBootstrap {
       readOnly: false,
     };
   }
+  const encodedRoutePath = decodedSegments.map((segment) => encodeURIComponent(segment)).join("/");
   return {
     routeId,
-    configPath: `config/${routeId}.json`,
+    configPath: `config/${encodedRoutePath}.json`,
     readOnly: true,
   };
 }

@@ -167,6 +167,13 @@ export function renderConfigPanel() {
 
             <div class="config-inline-fields">
               <label class="config-field">
+                <span>Distanza minima da parete con opere (m)</span>
+                <input id="config-map-min-painting-distance-m" type="number" step="0.05" min="0.2" max="5" value="1.35" />
+              </label>
+            </div>
+
+            <div class="config-inline-fields">
+              <label class="config-field">
                 <span>Tipo apertura</span>
                 <select id="config-map-opening-type">
                   <option value="door">Porta</option>
