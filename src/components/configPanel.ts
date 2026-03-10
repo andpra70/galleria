@@ -9,7 +9,7 @@ export function renderConfigPanel() {
             <button id="config-load-local" type="button" role="menuitem" title="Carica configurazione da IndexedDB locale">Carica</button>
             <button id="config-export-json" type="button" role="menuitem" title="Esporta mostra.json">Esporta JSON</button>
             <button id="config-import-json" type="button" role="menuitem" title="Importa mostra.json">Importa JSON</button>
-            <button id="config-import-catalog-json" type="button" role="menuitem" title="Importa config/catalogo.json">Importa catalogo JSON</button>
+            <button id="config-import-catalog-json" type="button" role="menuitem" title="Importa catalogo.json da file locale">Importa catalogo JSON</button>
           </div>
         </details>
         <button id="edit-mode-toggle" type="button" aria-pressed="false">✎ Edit: OFF</button>

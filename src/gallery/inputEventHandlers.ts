@@ -1,6 +1,5 @@
 import * as THREE_NS from "three";
 import { getFirstJsonFile } from "./files";
-import { resolveAppUrl } from "./url";
 import type { AppContext } from "./appServices";
 import type { PaintingRegistryEntry, PaintingSpot } from "./types";
 
@@ -489,19 +488,29 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
     input.click();
   }
 
-  async function onImportCatalogJson() {
-    try {
-      const response = await fetch(resolveAppUrl("config/catalogo.json"));
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+  function onImportCatalogJson() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".json,application/json";
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) {
+        return;
       }
-      const loaded = await response.json();
-      const replaceExisting = askReplaceExistingPaintings();
-      applyCatalogImport(loaded, replaceExisting);
-    } catch (error) {
-      console.error("Errore caricamento catalogo.json:", error);
-      window.alert("Impossibile caricare catalogo.json.");
-    }
+      try {
+        const raw = await file.text();
+        const loaded = JSON.parse(raw);
+        if (!isCatalogPayload(loaded)) {
+          throw new Error("Formato catalogo non valido");
+        }
+        const replaceExisting = askReplaceExistingPaintings();
+        applyCatalogImport(loaded, replaceExisting);
+      } catch (error) {
+        console.error("Errore import catalogo.json da file:", error);
+        window.alert("JSON catalogo non valido.");
+      }
+    };
+    input.click();
   }
 
   function onMinimapClick(event: MouseEvent) {
