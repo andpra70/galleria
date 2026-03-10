@@ -1,7 +1,6 @@
 import * as THREE_NS from "three";
 import type { RenderingConfigWithFloorTexture } from "./types";
-import { resolveAppUrl } from "./url";
-type TextureLike = THREE_NS.Texture | null | undefined;
+
 export type CreateFloorMaterialArgs = {
   THREE: typeof import("three");
   loader: THREE_NS.TextureLoader;
@@ -19,78 +18,11 @@ function must2d(canvas: HTMLCanvasElement): CanvasRenderingContext2D {
 }
 
 export function createFloorMaterial({ THREE, loader, renderer, renderCfg, floorColor }: CreateFloorMaterialArgs): THREE_NS.MeshStandardMaterial {
-  const floorTextureCfg = renderCfg.floorTexture ?? {};
-  const repeatX = floorTextureCfg.repeatX ?? 2.5;
-  const repeatY = floorTextureCfg.repeatY ?? 2.5;
-  const rotation = floorTextureCfg.rotation ?? 0;
-
-  const configureTexture = (texture: TextureLike, colorSpace: THREE_NS.ColorSpace | null) => {
-    if (!texture) {
-      return null;
-    }
-    texture.wrapS = THREE.RepeatWrapping;
-    texture.wrapT = THREE.RepeatWrapping;
-    texture.repeat.set(repeatX, repeatY);
-    texture.rotation = rotation;
-    texture.center.set(0.5, 0.5);
-    texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
-    if (colorSpace) {
-      texture.colorSpace = colorSpace;
-    }
-    return texture;
-  };
-
-  const colorMap = floorTextureCfg.map
-    ? configureTexture(loader.load(resolveAppUrl(floorTextureCfg.map)), THREE.SRGBColorSpace)
-    : configureTexture(createParquetTexture({ THREE, renderer }), THREE.SRGBColorSpace);
-  const alphaMap = floorTextureCfg.alphaMap
-    ? configureTexture(loader.load(resolveAppUrl(floorTextureCfg.alphaMap)), THREE.NoColorSpace)
-    : null;
-
   return new THREE.MeshStandardMaterial({
     color: floorColor,
-    map: colorMap,
-    alphaMap,
-    transparent: floorTextureCfg.transparent ?? Boolean(alphaMap),
-    alphaTest: floorTextureCfg.alphaTest ?? (alphaMap ? 0.02 : 0),
-    roughness: floorTextureCfg.roughness ?? 0.88,
-    metalness: floorTextureCfg.metalness ?? 0.04,
+    roughness: 0.9,
+    metalness: 0.03,
   });
-}
-
-export function createParquetTexture({
-  THREE,
-  renderer,
-}: {
-  THREE: typeof import("three");
-  renderer: THREE_NS.WebGLRenderer;
-}): THREE_NS.CanvasTexture {
-  const parquetCanvas = document.createElement("canvas");
-  parquetCanvas.width = 1024;
-  parquetCanvas.height = 1024;
-  const ctx = must2d(parquetCanvas);
-  const plankW = 128;
-  const plankH = 64;
-
-  for (let y = 0; y < parquetCanvas.height; y += plankH) {
-    const stagger = ((y / plankH) % 2) * (plankW / 2);
-    for (let x = -stagger; x < parquetCanvas.width; x += plankW) {
-      const tone = 214 + Math.floor(Math.random() * 18);
-      ctx.fillStyle = `rgb(${tone}, ${tone - 11}, ${tone - 28})`;
-      ctx.fillRect(x, y, plankW - 2, plankH - 2);
-      ctx.strokeStyle = "rgba(120, 92, 70, 0.22)";
-      ctx.lineWidth = 1;
-      ctx.strokeRect(x + 0.5, y + 0.5, plankW - 3, plankH - 3);
-    }
-  }
-
-  const texture = new THREE.CanvasTexture(parquetCanvas);
-  texture.wrapS = THREE.RepeatWrapping;
-  texture.wrapT = THREE.RepeatWrapping;
-  texture.repeat.set(2.5, 2.5);
-  texture.colorSpace = THREE.SRGBColorSpace;
-  texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
-  return texture;
 }
 
 export function createPlaceholderPaintingImage(label: string) {

@@ -151,6 +151,8 @@ const configMapToolButtons = Array.from(document.querySelectorAll<HTMLButtonElem
 const configMapToggleSnapBtn = mustEl<HTMLButtonElement>("config-map-toggle-snap");
 const configMapToggleMagnetBtn = mustEl<HTMLButtonElement>("config-map-toggle-magnet");
 const configMapDeleteRoomBtn = mustEl<HTMLButtonElement>("config-map-delete-room");
+const configMapFloorColor = mustEl<HTMLInputElement>("config-map-floor-color");
+const configMapWallColor = mustEl<HTMLInputElement>("config-map-wall-color");
 const configMapWallHeightCm = mustEl<HTMLInputElement>("config-map-wall-height-cm");
 const configMapWallThicknessCm = mustEl<HTMLInputElement>("config-map-wall-thickness-cm");
 const configMapOpeningType = mustEl<HTMLSelectElement>("config-map-opening-type");
@@ -571,6 +573,7 @@ const { onResize, animate } = createRuntimeLoop({
   updateFocusOrientation,
   updateCamera,
   afterCameraUpdate: () => {
+    updateEditModeVisuals();
     dragMeasureOverlay.update();
     refreshGalleryMapObserverIfNeeded();
   },
@@ -902,6 +905,21 @@ function setActiveArtEditTab(tabId: string) {
   });
 }
 
+function getCurrentVisitorRoomId() {
+  for (let i = config.rooms.length - 1; i >= 0; i -= 1) {
+    const room = config.rooms[i];
+    if (
+      visitor.position.x >= room.x &&
+      visitor.position.x <= room.x + room.width &&
+      visitor.position.z >= room.z &&
+      visitor.position.z <= room.z + room.depth
+    ) {
+      return room.id;
+    }
+  }
+  return null;
+}
+
 function attachArtEditTabs() {
   artEditTabButtons.forEach((button) => {
     button.addEventListener("click", () => {
@@ -916,12 +934,15 @@ function attachArtEditTabs() {
 }
 
 function updateEditModeVisuals() {
+  const currentRoomId = uiState.editMode ? getCurrentVisitorRoomId() : null;
   paintingRegistry.forEach((entry) => {
+    const entryRoomId = entry.painting.roomId ?? entry.room?.id ?? "";
+    const handlesVisible = Boolean(currentRoomId) && entryRoomId === currentRoomId;
     if (entry.deleteHandle) {
-      entry.deleteHandle.visible = uiState.editMode;
+      entry.deleteHandle.visible = handlesVisible;
     }
     if (entry.moveHandle) {
-      entry.moveHandle.visible = uiState.editMode;
+      entry.moveHandle.visible = handlesVisible;
     }
   });
 }
@@ -3043,6 +3064,23 @@ function clampCameraFov(value: number) {
   return clampNumber(value, 20, 120);
 }
 
+function normalizeColorInputValue(value: unknown, fallback: string) {
+  const normalizedFallback = /^#[0-9a-f]{6}$/i.test(fallback) ? fallback.toLowerCase() : "#000000";
+  if (typeof value !== "string") {
+    return normalizedFallback;
+  }
+  const raw = value.trim();
+  const shortHexMatch = raw.match(/^#([0-9a-f]{3})$/i);
+  if (shortHexMatch) {
+    const [r, g, b] = shortHexMatch[1].split("");
+    return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+  }
+  if (/^#[0-9a-f]{6}$/i.test(raw)) {
+    return raw.toLowerCase();
+  }
+  return normalizedFallback;
+}
+
 function roundConfigNumber(value: number, digits = 3) {
   if (!Number.isFinite(value)) {
     return 0;
@@ -3557,6 +3595,9 @@ function syncConfigPanelFromConfig() {
   configWhereAddress.value = exhibition.indirizzoCompleto ?? exhibition.location?.name ?? "";
   configWhereTextMd.value = exhibition.doveText ?? "";
   configIntroMd.value = exhibition.introductionMd ?? "";
+  const rendering = ensureRenderingConfig();
+  configMapFloorColor.value = normalizeColorInputValue(rendering.floorColor, "#c7c7c7");
+  configMapWallColor.value = normalizeColorInputValue(rendering.wallColor, "#ffffff");
   const configuredFov = Number(config.rendering?.cameraFov);
   configCameraFov.value = String(Math.round(clampCameraFov(Number.isFinite(configuredFov) ? configuredFov : camera.fov)));
   const start = config.visitor?.start ?? {};
@@ -3659,6 +3700,31 @@ function attachConfigPanel() {
     const exhibition = ensureExhibitionConfig();
     exhibition.introductionMd = configIntroMd.value || undefined;
   });
+  const applyRenderingColorsFromInputs = () => {
+    const rendering = ensureRenderingConfig();
+    rendering.floorColor = normalizeColorInputValue(configMapFloorColor.value, "#c7c7c7");
+    rendering.wallColor = normalizeColorInputValue(configMapWallColor.value, "#ffffff");
+    configMapFloorColor.value = rendering.floorColor;
+    configMapWallColor.value = rendering.wallColor;
+    rebuildSceneFromConfig();
+    if (isConfigTabActive("gallery-map")) {
+      renderGalleryMapEditor();
+    }
+  };
+  let renderingColorRafId: number | null = null;
+  const scheduleRenderingColorsFromInputs = () => {
+    if (renderingColorRafId != null) {
+      return;
+    }
+    renderingColorRafId = window.requestAnimationFrame(() => {
+      renderingColorRafId = null;
+      applyRenderingColorsFromInputs();
+    });
+  };
+  configMapFloorColor.addEventListener("input", scheduleRenderingColorsFromInputs);
+  configMapWallColor.addEventListener("input", scheduleRenderingColorsFromInputs);
+  configMapFloorColor.addEventListener("change", applyRenderingColorsFromInputs);
+  configMapWallColor.addEventListener("change", applyRenderingColorsFromInputs);
   configCameraCaptureViewBtn.addEventListener("click", () => {
     persistCurrentCameraConfigToShow();
     syncConfigPanelFromConfig();

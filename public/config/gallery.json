@@ -18,16 +18,6 @@
     "floorColor": "#eeeeee",
     "ambientLight": 0.8,
     "diffuseAmbient": 0.8,
-    "floorTexture": {
-      "map": "./assets/floor/parquet-light.svg",
-      "alphaMap": "./assets/floor/parquet-alpha.svg",
-      "repeatX": 2.5,
-      "repeatY": 2.5,
-      "roughness": 0.86,
-      "metalness": 0.03,
-      "alphaTest": 0,
-      "transparent": true
-    },
     "defaultPaintingHeight": 1,
     "cameraFov": 100
   },

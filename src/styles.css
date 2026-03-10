@@ -312,6 +312,11 @@ body,
   min-height: 120px;
 }
 
+.config-field input[type="color"] {
+  min-height: 36px;
+  padding: 3px;
+}
+
 .config-inline-fields {
   display: grid;
   grid-template-columns: 1fr 1fr;

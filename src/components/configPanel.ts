@@ -145,6 +145,17 @@ export function renderConfigPanel() {
           <div class="config-gallery-map-subtab-panel" data-gallery-map-subtab-panel="params" role="tabpanel" hidden>
             <div class="config-inline-fields">
               <label class="config-field">
+                <span>Colore pavimento</span>
+                <input id="config-map-floor-color" type="color" value="#c7c7c7" />
+              </label>
+              <label class="config-field">
+                <span>Colore pareti</span>
+                <input id="config-map-wall-color" type="color" value="#ffffff" />
+              </label>
+            </div>
+
+            <div class="config-inline-fields">
+              <label class="config-field">
                 <span>H muro (cm)</span>
                 <input id="config-map-wall-height-cm" type="number" step="10" min="100" value="300" />
               </label>
