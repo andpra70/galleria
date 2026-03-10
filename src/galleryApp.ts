@@ -169,6 +169,14 @@ const configGalleryMapSubTabButtons = Array.from(
 );
 const configGalleryMapSubTabPanels = Array.from(document.querySelectorAll<HTMLElement>("[data-gallery-map-subtab-panel]"));
 const configIntroMd = mustEl<HTMLTextAreaElement>("config-intro-md");
+const configCameraFov = mustEl<HTMLInputElement>("config-camera-fov");
+const configCameraStartX = mustEl<HTMLInputElement>("config-camera-start-x");
+const configCameraStartY = mustEl<HTMLInputElement>("config-camera-start-y");
+const configCameraStartZ = mustEl<HTMLInputElement>("config-camera-start-z");
+const configCameraTargetX = mustEl<HTMLInputElement>("config-camera-target-x");
+const configCameraTargetY = mustEl<HTMLInputElement>("config-camera-target-y");
+const configCameraTargetZ = mustEl<HTMLInputElement>("config-camera-target-z");
+const configCameraCaptureViewBtn = mustEl<HTMLButtonElement>("config-camera-capture-view");
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -540,6 +548,7 @@ const { updateMovement, computePaintingViewPosition, updateFocusOrientation, upd
 });
 
 const { onResize, animate } = createRuntimeLoop({
+  canvas,
   renderer,
   camera,
   scene,
@@ -780,6 +789,7 @@ const inputEventHandlers = createInputEventHandlers({
   setEditMode,
   renderFilmstrip,
   syncConfigPanel: () => syncConfigPanelFromConfig(),
+  persistCameraViewConfig: () => persistCurrentCameraConfigToShow(),
   actions: {
     clampToWalkable: movementActions.clampToWalkable,
     moveVisitorTo: movementActions.moveVisitorTo,
@@ -824,10 +834,36 @@ function applyVisitorConfig(visitorCfg: import("./gallery/types").VisitorConfig 
   movement.speedScale = THREE.MathUtils.clamp(visitorCfg.initialSpeedScale ?? movement.speedScale, 0.5, 3);
 
   const start = visitorCfg.start ?? { x: 0, z: 0, yaw: 0 };
-  visitor.position.set(start.x ?? 0, visitor.eyeHeight, start.z ?? 0);
+  const startX = Number(start.x);
+  const startY = Number(start.y);
+  const startZ = Number(start.z);
+  visitor.position.set(
+    Number.isFinite(startX) ? startX : 0,
+    Number.isFinite(startY) ? startY : visitor.eyeHeight,
+    Number.isFinite(startZ) ? startZ : 0
+  );
 
-  movement.yaw = start.yaw ?? 0;
-  movement.pitch = 0;
+  const targetX = Number(start.targetX);
+  const targetY = Number(start.targetY);
+  const targetZ = Number(start.targetZ);
+  if (Number.isFinite(targetX) && Number.isFinite(targetY) && Number.isFinite(targetZ)) {
+    const target = new THREE.Vector3(targetX, targetY, targetZ);
+    movement.focusTarget = target.clone();
+    const toTarget = target.clone().sub(visitor.position);
+    const horizontal = Math.hypot(toTarget.x, toTarget.z);
+    if (horizontal > 0.0001) {
+      movement.yaw = Math.atan2(toTarget.x, toTarget.z);
+      movement.pitch = THREE.MathUtils.clamp(Math.atan2(toTarget.y, horizontal), MIN_PITCH, MAX_PITCH);
+    } else {
+      movement.yaw = Number.isFinite(Number(start.yaw)) ? Number(start.yaw) : 0;
+      movement.pitch = THREE.MathUtils.clamp(Number(start.pitch ?? 0), MIN_PITCH, MAX_PITCH);
+    }
+    return;
+  }
+
+  movement.focusTarget = null;
+  movement.yaw = Number.isFinite(Number(start.yaw)) ? Number(start.yaw) : 0;
+  movement.pitch = THREE.MathUtils.clamp(Number(start.pitch ?? 0), MIN_PITCH, MAX_PITCH);
 }
 
 function setEditMode(enabled: boolean) {
@@ -2572,9 +2608,9 @@ function attachGalleryMapEditor() {
   });
 
   const onPointerDown = (event: PointerEvent) => {
+    event.preventDefault();
     const wantsPan = event.button === 1 || event.button === 2 || (event.button === 0 && event.altKey);
     if (wantsPan) {
-      event.preventDefault();
       galleryMapEditorState.panning = {
         pointerId: event.pointerId,
         startClientX: event.clientX,
@@ -2714,6 +2750,7 @@ function attachGalleryMapEditor() {
 
   const onPointerMove = (event: PointerEvent) => {
     if (galleryMapEditorState.panning && galleryMapEditorState.panning.pointerId === event.pointerId) {
+      event.preventDefault();
       const { width, height } = getGalleryMapEditorSize();
       const { scale } = createPlanTransforms(width, height);
       const deltaX = event.clientX - galleryMapEditorState.panning.startClientX;
@@ -2726,6 +2763,7 @@ function attachGalleryMapEditor() {
     if (!galleryMapEditorState.dragStart) {
       return;
     }
+    event.preventDefault();
     const rawPoint = getPlanPointFromEditorEvent(event);
     if (galleryMapEditorState.dragAction === "createRoom") {
       galleryMapEditorState.dragCurrent = applyPlanPointAssist(rawPoint, "room-create", {
@@ -2743,6 +2781,7 @@ function attachGalleryMapEditor() {
 
   const onPointerUp = (event: PointerEvent) => {
     if (galleryMapEditorState.panning && galleryMapEditorState.panning.pointerId === event.pointerId) {
+      event.preventDefault();
       galleryMapEditorState.panning = null;
       if (configGalleryMapEditor.hasPointerCapture(event.pointerId)) {
         configGalleryMapEditor.releasePointerCapture(event.pointerId);
@@ -2753,6 +2792,7 @@ function attachGalleryMapEditor() {
     if (!galleryMapEditorState.dragStart || !galleryMapEditorState.dragCurrent) {
       return;
     }
+    event.preventDefault();
     const start = galleryMapEditorState.dragStart;
     const rawEnd = getPlanPointFromEditorEvent(event);
     if (galleryMapEditorState.dragAction === "createRoom") {
@@ -2834,8 +2874,72 @@ function ensureExhibitionConfig() {
   return config.exhibition;
 }
 
+function ensureVisitorConfig() {
+  config.visitor = config.visitor ?? {};
+  return config.visitor;
+}
+
+function ensureVisitorStartConfig() {
+  const visitorCfg = ensureVisitorConfig();
+  visitorCfg.start = visitorCfg.start ?? {};
+  return visitorCfg.start;
+}
+
+function ensureRenderingConfig() {
+  config.rendering = config.rendering ?? {};
+  return config.rendering;
+}
+
 function clampNumber(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function clampCameraFov(value: number) {
+  return clampNumber(value, 20, 120);
+}
+
+function roundConfigNumber(value: number, digits = 3) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+}
+
+function resolveCurrentViewTarget() {
+  if (movement.focusTarget) {
+    return movement.focusTarget.clone();
+  }
+  const lookDir = new THREE.Vector3(
+    Math.cos(movement.pitch) * Math.sin(movement.yaw),
+    Math.sin(movement.pitch),
+    Math.cos(movement.pitch) * Math.cos(movement.yaw)
+  ).normalize();
+  return visitor.position.clone().add(lookDir.multiplyScalar(3));
+}
+
+function persistCurrentCameraConfigToShow() {
+  const rendering = ensureRenderingConfig();
+  rendering.cameraFov = roundConfigNumber(clampCameraFov(Number(camera.fov)), 2);
+
+  const start = ensureVisitorStartConfig();
+  const target = resolveCurrentViewTarget();
+  start.x = roundConfigNumber(visitor.position.x);
+  start.y = roundConfigNumber(visitor.position.y);
+  start.z = roundConfigNumber(visitor.position.z);
+  start.yaw = roundConfigNumber(movement.yaw, 6);
+  start.pitch = roundConfigNumber(movement.pitch, 6);
+  start.targetX = roundConfigNumber(target.x);
+  start.targetY = roundConfigNumber(target.y);
+  start.targetZ = roundConfigNumber(target.z);
+}
+
+function setCameraFieldValue(input: HTMLInputElement, value: number | undefined, digits = 2) {
+  if (Number.isFinite(value)) {
+    input.value = Number(value).toFixed(digits);
+  } else {
+    input.value = "";
+  }
 }
 
 function parseIsoDate(value: string | undefined | null) {
@@ -3304,6 +3408,15 @@ function syncConfigPanelFromConfig() {
   configWhereAddress.value = exhibition.indirizzoCompleto ?? exhibition.location?.name ?? "";
   configWhereTextMd.value = exhibition.doveText ?? "";
   configIntroMd.value = exhibition.introductionMd ?? "";
+  const configuredFov = Number(config.rendering?.cameraFov);
+  configCameraFov.value = String(Math.round(clampCameraFov(Number.isFinite(configuredFov) ? configuredFov : camera.fov)));
+  const start = config.visitor?.start ?? {};
+  setCameraFieldValue(configCameraStartX, Number(start.x), 2);
+  setCameraFieldValue(configCameraStartY, Number(start.y), 2);
+  setCameraFieldValue(configCameraStartZ, Number(start.z), 2);
+  setCameraFieldValue(configCameraTargetX, Number(start.targetX), 2);
+  setCameraFieldValue(configCameraTargetY, Number(start.targetY), 2);
+  setCameraFieldValue(configCameraTargetZ, Number(start.targetZ), 2);
 
   const { lat, lng, zoom } = resolveExhibitionLocation();
   configWhereLat.value = lat.toFixed(6);
@@ -3397,6 +3510,45 @@ function attachConfigPanel() {
     const exhibition = ensureExhibitionConfig();
     exhibition.introductionMd = configIntroMd.value || undefined;
   });
+  configCameraCaptureViewBtn.addEventListener("click", () => {
+    persistCurrentCameraConfigToShow();
+    syncConfigPanelFromConfig();
+  });
+  configCameraFov.addEventListener("change", () => {
+    const parsed = Number(configCameraFov.value);
+    if (!Number.isFinite(parsed)) {
+      configCameraFov.value = String(Math.round(clampCameraFov(camera.fov)));
+      return;
+    }
+    const nextFov = clampCameraFov(parsed);
+    ensureRenderingConfig().cameraFov = nextFov;
+    camera.fov = nextFov;
+    camera.updateProjectionMatrix();
+    configCameraFov.value = String(Math.round(nextFov));
+  });
+  const syncCameraStartFromInputs = () => {
+    const start = ensureVisitorStartConfig();
+    const setIfFinite = (input: HTMLInputElement, key: keyof typeof start) => {
+      const value = Number(input.value);
+      if (Number.isFinite(value)) {
+        start[key] = value;
+      } else {
+        delete start[key];
+      }
+    };
+    setIfFinite(configCameraStartX, "x");
+    setIfFinite(configCameraStartY, "y");
+    setIfFinite(configCameraStartZ, "z");
+    setIfFinite(configCameraTargetX, "targetX");
+    setIfFinite(configCameraTargetY, "targetY");
+    setIfFinite(configCameraTargetZ, "targetZ");
+  };
+  configCameraStartX.addEventListener("change", syncCameraStartFromInputs);
+  configCameraStartY.addEventListener("change", syncCameraStartFromInputs);
+  configCameraStartZ.addEventListener("change", syncCameraStartFromInputs);
+  configCameraTargetX.addEventListener("change", syncCameraStartFromInputs);
+  configCameraTargetY.addEventListener("change", syncCameraStartFromInputs);
+  configCameraTargetZ.addEventListener("change", syncCameraStartFromInputs);
   const onLocationInputChanged = () => {
     const lat = Number(configWhereLat.value);
     const lng = Number(configWhereLng.value);

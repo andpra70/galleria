@@ -113,6 +113,15 @@ export function renderConfigPanel() {
               class="config-subtab"
               role="tab"
               aria-selected="false"
+              data-gallery-map-subtab="camera"
+            >
+              Camera
+            </button>
+            <button
+              type="button"
+              class="config-subtab"
+              role="tab"
+              aria-selected="false"
               data-gallery-map-subtab="lights"
             >
               Luci
@@ -168,6 +177,48 @@ export function renderConfigPanel() {
               <label class="config-field">
                 <span>Altezza apertura (cm)</span>
                 <input id="config-map-opening-height-cm" type="number" step="5" min="20" value="220" />
+              </label>
+            </div>
+          </div>
+
+          <div class="config-gallery-map-subtab-panel" data-gallery-map-subtab-panel="camera" role="tabpanel" hidden>
+            <div class="config-inline-fields">
+              <label class="config-field">
+                <span>FOV camera (deg)</span>
+                <input id="config-camera-fov" type="number" min="20" max="120" step="1" />
+              </label>
+              <button id="config-camera-capture-view" type="button" title="Salva posizione e target della vista corrente">
+                Usa vista corrente
+              </button>
+            </div>
+            <div class="config-inline-fields">
+              <label class="config-field">
+                <span>Start X (m)</span>
+                <input id="config-camera-start-x" type="number" step="0.01" />
+              </label>
+              <label class="config-field">
+                <span>Start Y (m)</span>
+                <input id="config-camera-start-y" type="number" step="0.01" />
+              </label>
+            </div>
+            <div class="config-inline-fields">
+              <label class="config-field">
+                <span>Start Z (m)</span>
+                <input id="config-camera-start-z" type="number" step="0.01" />
+              </label>
+              <label class="config-field">
+                <span>Target X (m)</span>
+                <input id="config-camera-target-x" type="number" step="0.01" />
+              </label>
+            </div>
+            <div class="config-inline-fields">
+              <label class="config-field">
+                <span>Target Y (m)</span>
+                <input id="config-camera-target-y" type="number" step="0.01" />
+              </label>
+              <label class="config-field">
+                <span>Target Z (m)</span>
+                <input id="config-camera-target-z" type="number" step="0.01" />
               </label>
             </div>
           </div>

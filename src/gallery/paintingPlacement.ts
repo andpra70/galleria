@@ -45,11 +45,11 @@ export function createPaintingPlacementHelpers({ THREE, upAxis, getRoomsById, ge
 
     if (wall === "north") {
       pos.set(room.x + offset, centerY, room.z + pushOut);
-      quaternion.setFromAxisAngle(upAxis, Math.PI);
+      quaternion.setFromAxisAngle(upAxis, 0);
       normal.set(0, 0, 1);
     } else if (wall === "south") {
       pos.set(room.x + offset, centerY, room.z + room.depth - pushOut);
-      quaternion.setFromAxisAngle(upAxis, 0);
+      quaternion.setFromAxisAngle(upAxis, Math.PI);
       normal.set(0, 0, -1);
     } else if (wall === "west") {
       pos.set(room.x + pushOut, centerY, room.z + offset);

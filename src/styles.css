@@ -328,6 +328,18 @@ body,
   flex: 1;
 }
 
+#config-camera-capture-view {
+  align-self: end;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 0.82rem;
+  cursor: pointer;
+  background: #0f766e;
+  color: #ffffff;
+  height: fit-content;
+}
+
 #config-when-calendar-card {
   border: 1px solid rgba(148, 163, 184, 0.45);
   border-radius: 10px;
@@ -523,6 +535,8 @@ body,
   border-radius: 8px;
   overflow: hidden;
   background: rgba(241, 245, 249, 0.94);
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 #config-gallery-map-editor {
@@ -530,6 +544,13 @@ body,
   width: 100%;
   height: 360px;
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#config-gallery-map-editor * {
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .gallery-map-painting-marker {

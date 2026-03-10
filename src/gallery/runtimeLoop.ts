@@ -4,6 +4,7 @@ import type { MapState } from "./appStatus";
 import type { ShowConfig } from "./types";
 
 type RuntimeLoopDeps = {
+  canvas: HTMLCanvasElement;
   renderer: THREE_NS.WebGLRenderer;
   camera: THREE_NS.PerspectiveCamera;
   scene: THREE_NS.Scene;
@@ -30,6 +31,7 @@ type RuntimeLoopDeps = {
 
 export function createRuntimeLoop(deps: RuntimeLoopDeps) {
   const {
+    canvas,
     renderer,
     camera,
     scene,
@@ -48,8 +50,9 @@ export function createRuntimeLoop(deps: RuntimeLoopDeps) {
   } = deps;
 
   function onResize() {
-    const w = window.innerWidth;
-    const h = window.innerHeight;
+    const bounds = canvas.getBoundingClientRect();
+    const w = Math.max(1, Math.floor(bounds.width || canvas.clientWidth || window.innerWidth));
+    const h = Math.max(1, Math.floor(bounds.height || canvas.clientHeight || window.innerHeight));
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();

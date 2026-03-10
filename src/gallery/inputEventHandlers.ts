@@ -42,6 +42,7 @@ type InputEventHandlersDeps = {
   setEditMode: (enabled: boolean) => void;
   renderFilmstrip: () => void;
   syncConfigPanel: () => void;
+  persistCameraViewConfig?: () => void;
   actions: InteractionActions;
 };
 
@@ -58,6 +59,7 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
     setEditMode,
     renderFilmstrip,
     syncConfigPanel,
+    persistCameraViewConfig,
     actions,
   } = deps;
   const { status } = app;
@@ -433,6 +435,7 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
 
   async function onSaveLocalShow() {
     try {
+      persistCameraViewConfig?.();
       await saveCurrentShowToLocalDb();
     } catch (error) {
       console.error("Errore salvataggio locale IndexedDB:", error);
@@ -456,6 +459,7 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
   }
 
   function onExportShowJson() {
+    persistCameraViewConfig?.();
     const serialized = JSON.stringify(status.refs.getConfig(), null, 2);
     const blob = new Blob([serialized], { type: "application/json" });
     const url = URL.createObjectURL(blob);

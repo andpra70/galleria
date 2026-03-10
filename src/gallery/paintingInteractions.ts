@@ -56,6 +56,7 @@ export function createPaintingInteractions(deps: PaintingInteractionsDeps) {
   const { paintingDeleteMeshes, paintingMoveMeshes, paintingPickMeshes, paintingRegistry, wallMeshes } = app.collections;
   const { artEditPanel } = app.dom;
   const { mToCm } = app.helpers;
+  const getConfig = app.status.refs.getConfig;
   const getRoomsById = app.status.refs.getRoomsById;
 
   type RoomWallIntersection = THREE_NS.Intersection<THREE_NS.Object3D> & {
@@ -79,6 +80,43 @@ export function createPaintingInteractions(deps: PaintingInteractionsDeps) {
       }
     }
     return null;
+  }
+
+  function getCurrentVisitorRoomId() {
+    const rooms = getConfig().rooms;
+    const x = visitor.position.x;
+    const z = visitor.position.z;
+    for (let i = rooms.length - 1; i >= 0; i -= 1) {
+      const room = rooms[i];
+      if (x >= room.x && x <= room.x + room.width && z >= room.z && z <= room.z + room.depth) {
+        return room.id;
+      }
+    }
+    return null;
+  }
+
+  function getPaintingIdFromIntersection(hit: THREE_NS.Intersection<THREE_NS.Object3D> | undefined) {
+    if (!hit) {
+      return null;
+    }
+    const explicitId = hit.object.userData.paintingId as string | undefined;
+    if (explicitId) {
+      return explicitId;
+    }
+    return (hit.object.userData.paintingSpot as PaintingSpot | undefined)?.id ?? null;
+  }
+
+  function isPaintingVisibleForDrag(entry: PaintingRegistryEntry, visitorRoomId: string) {
+    const paintingRoomId = entry.painting.roomId ?? entry.room?.id ?? "";
+    if (!paintingRoomId || paintingRoomId !== visitorRoomId) {
+      return false;
+    }
+    const toVisitor = visitor.position.clone().sub(entry.paintingSpot.center);
+    const facingDepth = toVisitor.dot(entry.paintingSpot.normal);
+    if (facingDepth <= 0.02) {
+      return false;
+    }
+    return true;
   }
 
   function handleDeleteHandleClick(clientX: number, clientY: number) {
@@ -107,12 +145,32 @@ export function createPaintingInteractions(deps: PaintingInteractionsDeps) {
       return false;
     }
     setPointerRay(clientX, clientY);
-    const moveHandleHit = raycaster.intersectObjects(paintingMoveMeshes, false)[0];
-    const paintingPickHit = moveHandleHit ? null : raycaster.intersectObjects(paintingPickMeshes, false)[0];
-    const paintingId =
-      (moveHandleHit?.object.userData.paintingId as string | undefined) ??
-      (paintingPickHit?.object.userData.paintingId as string | undefined) ??
-      ((paintingPickHit?.object.userData.paintingSpot as PaintingSpot | undefined)?.id ?? undefined);
+    const visitorRoomId = getCurrentVisitorRoomId();
+    if (!visitorRoomId) {
+      return false;
+    }
+    const allHits = raycaster.intersectObjects([...paintingMoveMeshes, ...paintingPickMeshes, ...wallMeshes], false);
+    const wallObjects = new Set<THREE_NS.Object3D>(wallMeshes as THREE_NS.Object3D[]);
+    let paintingId: string | null = null;
+    for (let i = 0; i < allHits.length; i += 1) {
+      const candidate = allHits[i];
+      const candidateId = getPaintingIdFromIntersection(candidate);
+      if (!candidateId) {
+        if (wallObjects.has(candidate.object)) {
+          break;
+        }
+        continue;
+      }
+      const candidateEntry = paintingRegistry.get(candidateId);
+      if (!candidateEntry) {
+        continue;
+      }
+      if (!isPaintingVisibleForDrag(candidateEntry, visitorRoomId)) {
+        continue;
+      }
+      paintingId = candidateId;
+      break;
+    }
     if (!paintingId) {
       return false;
     }

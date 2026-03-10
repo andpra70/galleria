@@ -119,7 +119,16 @@ export interface VisitorConfig {
   minPaintingDistance?: number;
   navCellSize?: number;
   initialSpeedScale?: number;
-  start?: { x?: number; z?: number; yaw?: number };
+  start?: {
+    x?: number;
+    y?: number;
+    z?: number;
+    yaw?: number;
+    pitch?: number;
+    targetX?: number;
+    targetY?: number;
+    targetZ?: number;
+  };
 }
 
 export interface RenderingConfig {
