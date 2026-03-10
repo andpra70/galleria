@@ -116,15 +116,14 @@ function stripBaseFromPath(pathname: string): string {
 
 function resolveBootstrapFromRoute(): GalleryBootstrap {
   const relativePath = stripBaseFromPath(window.location.pathname);
-  const rawSegments = relativePath
+  const segments = relativePath
     .split("/")
     .map((segment) => segment.trim())
     .filter(Boolean);
-  if (rawSegments[0]?.toLowerCase() === "index.html") {
-    rawSegments.shift();
+  if (segments[0]?.toLowerCase() === "index.html") {
+    segments.shift();
   }
-  const decodedSegments = rawSegments.map((segment) => decodeURIComponent(segment));
-  const routeId = decodedSegments.length > 0 ? decodedSegments.join("/") : null;
+  const routeId = segments.length > 0 ? decodeURIComponent(segments[0]) : null;
   const fallbackConfigPath = "config/gallery.json";
   if (!routeId) {
     return {
@@ -133,10 +132,9 @@ function resolveBootstrapFromRoute(): GalleryBootstrap {
       readOnly: false,
     };
   }
-  const encodedRoutePath = decodedSegments.map((segment) => encodeURIComponent(segment)).join("/");
   return {
     routeId,
-    configPath: `config/${encodedRoutePath}.json`,
+    configPath: `config/${routeId}.json`,
     readOnly: true,
   };
 }
