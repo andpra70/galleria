@@ -55,12 +55,13 @@ export function createPaintingBuilder(deps: PaintingBuilderDeps) {
     y: painting.lightOffset?.y ?? 1.75,
     z: painting.lightOffset?.z ?? 0.9,
   });
-  const applySpotLightConfig = (spot: THREE_NS.SpotLight, painting: GalleryPainting) => {
-    spot.intensity = painting.light?.intensity ?? 13;
-    spot.distance = painting.light?.distance ?? 11.5;
-    spot.angle = painting.light?.angle ?? 0.4;
-    spot.penumbra = painting.light?.penumbra ?? 0.25;
-    spot.decay = painting.light?.decay ?? 1.4;
+  const applySpotLightConfig = (spot: THREE_NS.SpotLight, _painting: GalleryPainting) => {
+    spot.intensity = 0;
+    spot.distance = 0;
+    spot.angle = 0.4;
+    spot.penumbra = 0;
+    spot.decay = 1;
+    spot.visible = false;
   };
 
   return function buildPainting(painting: GalleryPainting) {
@@ -135,7 +136,7 @@ export function createPaintingBuilder(deps: PaintingBuilderDeps) {
     canvas.userData.paintingId = painting.id;
     world.add(canvas);
 
-    const spot = new THREE.SpotLight("#ffffff", 13, 11.5, 0.4, 0.25, 1.4);
+    const spot = new THREE.SpotLight("#ffffff", 0, 0, 0.4, 0, 1);
     applySpotLightConfig(spot, painting);
     const lightOffset = getLightOffset(painting);
     const lightRight = new THREE.Vector3(1, 0, 0).applyQuaternion(transform.quaternion).normalize();
@@ -145,8 +146,7 @@ export function createPaintingBuilder(deps: PaintingBuilderDeps) {
       .add(new THREE.Vector3(0, lightOffset.y, 0))
       .add(transform.normal.clone().multiplyScalar(lightOffset.z));
     spot.target.position.copy(transform.position);
-    spot.castShadow = true;
-    spot.shadow.mapSize.set(1024, 1024);
+    spot.castShadow = false;
     world.add(spot);
     world.add(spot.target);
 

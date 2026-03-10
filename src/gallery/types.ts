@@ -89,6 +89,29 @@ export interface CustomWallConfig {
   openings?: GalleryRoomOpening[];
 }
 
+export interface GallerySpotLightConfig {
+  id?: string;
+  x?: number;
+  y?: number;
+  z?: number;
+  xCm?: number;
+  yCm?: number;
+  zCm?: number;
+  intensity?: number;
+  distance?: number;
+  angle?: number;
+  angleDeg?: number;
+  penumbra?: number;
+  decay?: number;
+  targetPaintingId?: string;
+  targetX?: number;
+  targetY?: number;
+  targetZ?: number;
+  targetXCm?: number;
+  targetYCm?: number;
+  targetZCm?: number;
+}
+
 export interface VisitorConfig {
   eyeHeight?: number;
   moveSpeed?: number;
@@ -146,6 +169,7 @@ export interface ShowConfig {
   rooms: GalleryRoom[];
   paintings: GalleryPainting[];
   customWalls?: CustomWallConfig[];
+  galleryLights?: GallerySpotLightConfig[];
   visitor?: VisitorConfig;
   rendering?: RenderingConfig;
   exhibition?: ExhibitionConfig;

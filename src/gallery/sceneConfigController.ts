@@ -1,6 +1,6 @@
 import * as THREE_NS from "three";
 import type { AppContext } from "./appServices";
-import type { CustomWallConfig, GalleryPainting, GalleryRoom, GalleryRoomOpening, ShowConfig, VisitorConfig } from "./types";
+import type { CustomWallConfig, GalleryPainting, GalleryRoom, GalleryRoomOpening, GallerySpotLightConfig, ShowConfig, VisitorConfig } from "./types";
 import { createPaintingConfigModel } from "./paintingModels";
 
 type SceneConfigControllerDeps = {
@@ -210,6 +210,91 @@ export function createSceneConfigController(deps: SceneConfigControllerDeps) {
     });
   }
 
+  function normalizeGalleryLightsFromCm(cfg: ShowConfig) {
+    const lights = Array.isArray(cfg.galleryLights) ? cfg.galleryLights : [];
+    cfg.galleryLights = lights;
+    lights.forEach((light: GallerySpotLightConfig) => {
+      light.id = light.id ?? `gallery_light_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+      if (light.xCm != null) {
+        light.x = cmToM(Number(light.xCm));
+      } else {
+        light.xCm = Math.round(mToCm(Number(light.x ?? 0)));
+      }
+      if (light.yCm != null) {
+        light.y = cmToM(Number(light.yCm));
+      } else {
+        light.yCm = Math.round(mToCm(Number(light.y ?? 2.9)));
+      }
+      if (light.zCm != null) {
+        light.z = cmToM(Number(light.zCm));
+      } else {
+        light.zCm = Math.round(mToCm(Number(light.z ?? 0)));
+      }
+
+      if (light.targetXCm != null) {
+        light.targetX = cmToM(Number(light.targetXCm));
+      } else if (light.targetX != null) {
+        light.targetXCm = Math.round(mToCm(Number(light.targetX)));
+      }
+      if (light.targetYCm != null) {
+        light.targetY = cmToM(Number(light.targetYCm));
+      } else if (light.targetY != null) {
+        light.targetYCm = Math.round(mToCm(Number(light.targetY)));
+      }
+      if (light.targetZCm != null) {
+        light.targetZ = cmToM(Number(light.targetZCm));
+      } else if (light.targetZ != null) {
+        light.targetZCm = Math.round(mToCm(Number(light.targetZ)));
+      }
+
+      light.intensity = Math.max(0, Number(light.intensity ?? 8));
+      light.distance = Math.max(0.5, Number(light.distance ?? 12));
+      if (light.angleDeg != null) {
+        const safeDeg = Math.min(80, Math.max(5, Number(light.angleDeg)));
+        light.angleDeg = safeDeg;
+        light.angle = THREE.MathUtils.degToRad(safeDeg);
+      } else {
+        const safeRad = Math.min(1.35, Math.max(0.05, Number(light.angle ?? THREE.MathUtils.degToRad(28))));
+        light.angle = safeRad;
+        light.angleDeg = Math.round(THREE.MathUtils.radToDeg(safeRad));
+      }
+      light.penumbra = Math.min(1, Math.max(0, Number(light.penumbra ?? 0.22)));
+      light.decay = Math.max(0, Number(light.decay ?? 1.2));
+    });
+  }
+
+  function buildGalleryLights(cfg: ShowConfig) {
+    const lights = Array.isArray(cfg.galleryLights) ? cfg.galleryLights : [];
+    lights.forEach((light) => {
+      const spot = new THREE.SpotLight(
+        "#ffffff",
+        Number(light.intensity ?? 8),
+        Number(light.distance ?? 12),
+        Number(light.angle ?? THREE.MathUtils.degToRad(28)),
+        Number(light.penumbra ?? 0.22),
+        Number(light.decay ?? 1.2)
+      );
+      const x = Number(light.x ?? 0);
+      const y = Number(light.y ?? 2.9);
+      const z = Number(light.z ?? 0);
+      spot.position.set(x, y, z);
+      const target = light.targetPaintingId ? paintingRegistry.get(light.targetPaintingId)?.paintingSpot.center : null;
+      if (target) {
+        spot.target.position.copy(target);
+      } else {
+        const tx = Number.isFinite(Number(light.targetX)) ? Number(light.targetX) : x;
+        const ty = Number.isFinite(Number(light.targetY)) ? Number(light.targetY) : 1.6;
+        const tz = Number.isFinite(Number(light.targetZ)) ? Number(light.targetZ) : z;
+        spot.target.position.set(tx, ty, tz);
+      }
+      spot.castShadow = true;
+      spot.shadow.mapSize.set(1024, 1024);
+      world.add(spot);
+      world.add(spot.target);
+    });
+  }
+
   function clearWorldObjects() {
     paintingRegistry.forEach((entry) => {
       if (entry.objectUrl) {
@@ -235,6 +320,8 @@ export function createSceneConfigController(deps: SceneConfigControllerDeps) {
           material.dispose?.();
         }
       }
+      const maybeDisposable = obj as unknown as { dispose?: () => void };
+      maybeDisposable.dispose?.();
     }
 
     floorMeshes.length = 0;
@@ -287,6 +374,7 @@ export function createSceneConfigController(deps: SceneConfigControllerDeps) {
 
     normalizeRoomsFromCm(cfg.rooms);
     normalizeCustomWallsFromCm(cfg);
+    normalizeGalleryLightsFromCm(cfg);
     status.refs.setRoomsById(new Map(cfg.rooms.map((room) => [room.id, room])));
     syncRoomOptions(cfg.rooms);
     normalizePaintings(cfg.paintings);
@@ -303,6 +391,7 @@ export function createSceneConfigController(deps: SceneConfigControllerDeps) {
       }
       buildPainting(painting);
     });
+    buildGalleryLights(cfg);
 
     calculateMapBounds(cfg.rooms, cfg.customWalls, mapState);
     buildNavGrid();

@@ -24,11 +24,12 @@ export function createPaintingPlacementHelpers({ THREE, upAxis, getRoomsById, ge
   }
 
   function applyPaintingLightConfig(entry: PaintingRegistryEntry) {
-    entry.spot.intensity = entry.painting.light?.intensity ?? 13;
-    entry.spot.distance = entry.painting.light?.distance ?? 11.5;
-    entry.spot.angle = entry.painting.light?.angle ?? 0.4;
-    entry.spot.penumbra = entry.painting.light?.penumbra ?? 0.25;
-    entry.spot.decay = entry.painting.light?.decay ?? 1.4;
+    entry.spot.intensity = 0;
+    entry.spot.distance = 0;
+    entry.spot.angle = 0.4;
+    entry.spot.penumbra = 0;
+    entry.spot.decay = 1;
+    entry.spot.visible = false;
   }
 
   function computeWallPlacement(

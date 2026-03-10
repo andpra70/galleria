@@ -401,6 +401,13 @@ body,
   align-items: center;
 }
 
+#config-gallery-light-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
 .config-map-tool {
   border: 0;
   border-radius: 8px;

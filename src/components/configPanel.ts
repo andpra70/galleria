@@ -107,6 +107,15 @@ export function renderConfigPanel() {
           >
             Parametri
           </button>
+          <button
+            type="button"
+            class="config-subtab"
+            role="tab"
+            aria-selected="false"
+            data-gallery-map-subtab="lights"
+          >
+            Luci
+          </button>
         </div>
 
         <div class="config-gallery-map-subtab-panel active" data-gallery-map-subtab-panel="editor" role="tabpanel">
@@ -120,10 +129,6 @@ export function renderConfigPanel() {
             <button type="button" class="config-map-toggle active" id="config-map-toggle-magnet" aria-pressed="true" title="Magnet a elementi vicini">⌖ Magnet</button>
             <button type="button" id="config-map-delete-room" disabled title="Elimina stanza selezionata">⌫ Stanza</button>
             <span class="config-map-snap">Griglia: 20 cm</span>
-          </div>
-
-          <div id="config-gallery-map-editor-wrap">
-            <svg id="config-gallery-map-editor" aria-label="Editor mappa galleria"></svg>
           </div>
         </div>
 
@@ -164,6 +169,53 @@ export function renderConfigPanel() {
               <input id="config-map-opening-height-cm" type="number" step="5" min="20" value="220" />
             </label>
           </div>
+        </div>
+
+        <div class="config-gallery-map-subtab-panel" data-gallery-map-subtab-panel="lights" role="tabpanel" hidden>
+          <div id="config-gallery-light-toolbar">
+            <button type="button" class="config-map-tool" data-map-tool="light" title="Aggiungi spot">✶ Spot</button>
+            <button type="button" class="config-map-tool danger" data-map-tool="delete-light" title="Rimuovi spot">⌦ Spot</button>
+            <span class="config-map-snap">Target: opera selezionata</span>
+          </div>
+
+          <div class="config-inline-fields">
+            <label class="config-field">
+              <span>Opera target</span>
+              <select id="config-map-light-target-painting">
+                <option value="">Nessuna opera</option>
+              </select>
+            </label>
+            <label class="config-field">
+              <span>Altezza luce (cm)</span>
+              <input id="config-map-light-height-cm" type="number" step="10" min="120" value="290" />
+            </label>
+          </div>
+
+          <div class="config-inline-fields">
+            <label class="config-field">
+              <span>Intensita</span>
+              <input id="config-map-light-intensity" type="number" step="0.5" min="0" value="8" />
+            </label>
+            <label class="config-field">
+              <span>Angolo spot (deg)</span>
+              <input id="config-map-light-angle-deg" type="number" step="1" min="5" max="80" value="28" />
+            </label>
+          </div>
+
+          <div class="config-inline-fields">
+            <label class="config-field">
+              <span>Distanza (m)</span>
+              <input id="config-map-light-distance-m" type="number" step="0.5" min="1" max="30" value="12" />
+            </label>
+            <label class="config-field">
+              <span>Penumbra</span>
+              <input id="config-map-light-penumbra" type="number" step="0.05" min="0" max="1" value="0.22" />
+            </label>
+          </div>
+        </div>
+
+        <div id="config-gallery-map-editor-wrap">
+          <svg id="config-gallery-map-editor" aria-label="Editor mappa galleria"></svg>
         </div>
       </div>
 

@@ -19,6 +19,7 @@ import type {
   FloorMesh,
   GalleryRoom,
   GalleryRoomOpening,
+  GallerySpotLightConfig,
   GalleryWallMesh,
   PaintingCanvasMesh,
   PaintingFrameMesh,
@@ -153,6 +154,12 @@ const configMapOpeningType = mustEl<HTMLSelectElement>("config-map-opening-type"
 const configMapOpeningWidthCm = mustEl<HTMLInputElement>("config-map-opening-width-cm");
 const configMapOpeningBaseCm = mustEl<HTMLInputElement>("config-map-opening-base-cm");
 const configMapOpeningHeightCm = mustEl<HTMLInputElement>("config-map-opening-height-cm");
+const configMapLightTargetPainting = mustEl<HTMLSelectElement>("config-map-light-target-painting");
+const configMapLightHeightCm = mustEl<HTMLInputElement>("config-map-light-height-cm");
+const configMapLightIntensity = mustEl<HTMLInputElement>("config-map-light-intensity");
+const configMapLightAngleDeg = mustEl<HTMLInputElement>("config-map-light-angle-deg");
+const configMapLightDistanceM = mustEl<HTMLInputElement>("config-map-light-distance-m");
+const configMapLightPenumbra = mustEl<HTMLInputElement>("config-map-light-penumbra");
 const configGalleryMapEditor = mustEl<SVGSVGElement>("config-gallery-map-editor");
 const configGalleryMapSubTabButtons = Array.from(
   document.querySelectorAll<HTMLButtonElement>("#config-gallery-map-tabs .config-subtab")
@@ -191,13 +198,20 @@ const GALLERY_EDITOR_PADDING_M = 1;
 const GALLERY_EDITOR_MIN_SPAN_M = 4;
 const GALLERY_MAGNET_THRESHOLD_M = 0.15;
 const GALLERY_SIZE_MAGNET_THRESHOLD_M = 0.22;
+const GALLERY_LIGHT_PICK_TOLERANCE_M = 0.45;
 
-type GalleryMapTool = "room" | "wall" | "opening" | "delete-opening" | "delete-wall";
-type GalleryMapDragAction = "none" | "createRoom" | "createWall" | "moveRoom";
+type GalleryMapTool = "room" | "wall" | "opening" | "delete-opening" | "delete-wall" | "light" | "delete-light";
+type GalleryMapDragAction = "none" | "createRoom" | "createWall" | "moveRoom" | "moveLight";
 type PlanPoint = { x: number; z: number };
 type PlanAssistMode = "room-create" | "room-move" | "wall-create" | "opening" | "generic";
 type GalleryMapRoomMoveState = {
   roomId: string;
+  startPointer: PlanPoint;
+  startX: number;
+  startZ: number;
+};
+type GalleryMapLightMoveState = {
+  lightId: string;
   startPointer: PlanPoint;
   startX: number;
   startZ: number;
@@ -295,7 +309,9 @@ const galleryMapEditorState: {
   dragStart: PlanPoint | null;
   dragCurrent: PlanPoint | null;
   selectedRoomId: string | null;
+  selectedLightId: string | null;
   movingRoom: GalleryMapRoomMoveState | null;
+  movingLight: GalleryMapLightMoveState | null;
   snapToGrid: boolean;
   magnet: boolean;
   widthPx: number;
@@ -306,7 +322,9 @@ const galleryMapEditorState: {
   dragStart: null,
   dragCurrent: null,
   selectedRoomId: null,
+  selectedLightId: null,
   movingRoom: null,
+  movingLight: null,
   snapToGrid: true,
   magnet: true,
   widthPx: 0,
@@ -666,6 +684,21 @@ const interactionActions = createInteractionActions({
   clampToWalkable: movementActions.clampToWalkable,
 });
 
+function syncLightTargetSelectorFromPainting(paintingId: string) {
+  if (!paintingId) {
+    return;
+  }
+  syncGalleryLightTargetOptions();
+  const hasPainting = Array.from(configMapLightTargetPainting.options).some((option) => option.value === paintingId);
+  if (!hasPainting) {
+    return;
+  }
+  configMapLightTargetPainting.value = paintingId;
+  if (galleryMapEditorState.selectedLightId) {
+    applySelectedGalleryLightParams();
+  }
+}
+
 const paintingInteractions = createPaintingInteractions({
   app: appContext,
   dom: {
@@ -689,6 +722,7 @@ const paintingInteractions = createPaintingInteractions({
     computePaintingViewPosition,
     moveVisitorTo: movementActions.moveVisitorTo,
     clampToWalkable: movementActions.clampToWalkable,
+    onPaintingPicked: syncLightTargetSelectorFromPainting,
   },
 });
 
@@ -796,6 +830,11 @@ function updateEditModeVisuals() {
 function ensureCustomWallsArray() {
   config.customWalls = Array.isArray(config.customWalls) ? config.customWalls : [];
   return config.customWalls;
+}
+
+function ensureGalleryLightsArray() {
+  config.galleryLights = Array.isArray(config.galleryLights) ? config.galleryLights : [];
+  return config.galleryLights;
 }
 
 function snapPlanValue(value: number) {
@@ -982,13 +1021,43 @@ function nextRoomId() {
   return `room_${index}`;
 }
 
+function nextGalleryLightId() {
+  return `gallery_light_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+}
+
 function setSelectedGalleryMapRoom(roomId: string | null) {
+  if (galleryMapEditorState.selectedLightId) {
+    galleryMapEditorState.selectedLightId = null;
+    syncGalleryLightTargetOptions();
+    syncSelectedGalleryLightControls();
+  }
   if (!roomId || !config.rooms.some((room) => room.id === roomId)) {
     galleryMapEditorState.selectedRoomId = null;
   } else {
     galleryMapEditorState.selectedRoomId = roomId;
   }
   configMapDeleteRoomBtn.disabled = !galleryMapEditorState.selectedRoomId;
+}
+
+function getSelectedGalleryLight() {
+  const selectedId = galleryMapEditorState.selectedLightId;
+  if (!selectedId) {
+    return null;
+  }
+  return ensureGalleryLightsArray().find((light) => light.id === selectedId) ?? null;
+}
+
+function setSelectedGalleryMapLight(lightId: string | null) {
+  const lights = ensureGalleryLightsArray();
+  if (!lightId || !lights.some((light) => light.id === lightId)) {
+    galleryMapEditorState.selectedLightId = null;
+  } else {
+    galleryMapEditorState.selectedLightId = lightId;
+    galleryMapEditorState.selectedRoomId = null;
+  }
+  configMapDeleteRoomBtn.disabled = !galleryMapEditorState.selectedRoomId;
+  syncGalleryLightTargetOptions();
+  syncSelectedGalleryLightControls();
 }
 
 function findRoomAtPlanPoint(point: PlanPoint) {
@@ -1000,6 +1069,282 @@ function findRoomAtPlanPoint(point: PlanPoint) {
     return room;
   }
   return null;
+}
+
+function getPaintingPlanPointById(paintingId?: string | null): PlanPoint | null {
+  if (!paintingId) {
+    return null;
+  }
+  const painting = config.paintings.find((candidate) => candidate.id === paintingId && candidate.placed !== false);
+  if (!painting) {
+    return null;
+  }
+  const room = config.rooms.find((candidate) => candidate.id === painting.roomId);
+  if (!room) {
+    return null;
+  }
+  const wall = (painting.wall ?? "north") as WallSide;
+  const span = getWallSpan(room, wall);
+  const offset = clampNumber(Number(painting.offset ?? 0), 0, span);
+  if (wall === "north") {
+    return { x: room.x + offset, z: room.z };
+  }
+  if (wall === "south") {
+    return { x: room.x + offset, z: room.z + room.depth };
+  }
+  if (wall === "west") {
+    return { x: room.x, z: room.z + offset };
+  }
+  return { x: room.x + room.width, z: room.z + offset };
+}
+
+function getGalleryLightTargetPlanPoint(light: GallerySpotLightConfig) {
+  const byPainting = getPaintingPlanPointById(light.targetPaintingId);
+  if (byPainting) {
+    return byPainting;
+  }
+  const targetX = Number(light.targetX);
+  const targetZ = Number(light.targetZ);
+  if (Number.isFinite(targetX) && Number.isFinite(targetZ)) {
+    return { x: targetX, z: targetZ };
+  }
+  return null;
+}
+
+function syncGalleryLightTargetOptions() {
+  const previousValue = configMapLightTargetPainting.value;
+  const selectedLight = getSelectedGalleryLight();
+  const options: Array<{ value: string; label: string }> = [{ value: "", label: "Nessuna opera" }];
+  config.paintings
+    .filter((painting) => painting.placed !== false)
+    .forEach((painting) => {
+      const title = (painting.title ?? "").trim() || painting.id;
+      options.push({ value: painting.id, label: title });
+    });
+  configMapLightTargetPainting.innerHTML = "";
+  options.forEach((optionData) => {
+    const option = document.createElement("option");
+    option.value = optionData.value;
+    option.textContent = optionData.label;
+    configMapLightTargetPainting.appendChild(option);
+  });
+  const preferredValue = selectedLight?.targetPaintingId ?? previousValue;
+  const hasPreferred = options.some((option) => option.value === preferredValue);
+  configMapLightTargetPainting.value = hasPreferred ? preferredValue : "";
+}
+
+function findNearestGalleryLight(point: PlanPoint, toleranceM = GALLERY_LIGHT_PICK_TOLERANCE_M) {
+  let best: { index: number; light: GallerySpotLightConfig; distance: number } | null = null;
+  ensureGalleryLightsArray().forEach((light, index) => {
+    const x = Number(light.x ?? 0);
+    const z = Number(light.z ?? 0);
+    const distance = Math.hypot(point.x - x, point.z - z);
+    if (distance > toleranceM) {
+      return;
+    }
+    if (!best || distance < best.distance) {
+      best = { index, light, distance };
+    }
+  });
+  return best;
+}
+
+function syncSelectedGalleryLightControls() {
+  const selectedLight = getSelectedGalleryLight();
+  if (!selectedLight) {
+    return;
+  }
+
+  const heightCm = Math.max(120, Number.isFinite(Number(selectedLight.yCm)) ? Number(selectedLight.yCm) : Number(selectedLight.y ?? 2.9) * 100);
+  const intensity = Math.max(0, Number(selectedLight.intensity ?? 8));
+  const angleDeg = clampNumber(
+    Number.isFinite(Number(selectedLight.angleDeg))
+      ? Number(selectedLight.angleDeg)
+      : THREE.MathUtils.radToDeg(Number(selectedLight.angle ?? THREE.MathUtils.degToRad(28))),
+    5,
+    80
+  );
+  const distance = Math.max(1, Number(selectedLight.distance ?? 12));
+  const penumbra = clampNumber(Number(selectedLight.penumbra ?? 0.22), 0, 1);
+
+  configMapLightHeightCm.value = String(Math.round(heightCm));
+  configMapLightIntensity.value = intensity.toFixed(2).replace(/\.00$/, "");
+  configMapLightAngleDeg.value = String(Math.round(angleDeg));
+  configMapLightDistanceM.value = distance.toFixed(2).replace(/\.00$/, "");
+  configMapLightPenumbra.value = penumbra.toFixed(2).replace(/\.00$/, "");
+
+  const targetPaintingId = selectedLight.targetPaintingId ?? "";
+  if (targetPaintingId && Array.from(configMapLightTargetPainting.options).some((option) => option.value === targetPaintingId)) {
+    configMapLightTargetPainting.value = targetPaintingId;
+  } else {
+    configMapLightTargetPainting.value = "";
+  }
+}
+
+function applySelectedGalleryLightParams() {
+  const selectedLight = getSelectedGalleryLight();
+  if (!selectedLight) {
+    return;
+  }
+
+  const rawHeightCm = Number(configMapLightHeightCm.value);
+  const rawIntensity = Number(configMapLightIntensity.value);
+  const rawAngleDeg = Number(configMapLightAngleDeg.value);
+  const rawDistance = Number(configMapLightDistanceM.value);
+  const rawPenumbra = Number(configMapLightPenumbra.value);
+  const heightCm = Math.max(120, Number.isFinite(rawHeightCm) ? rawHeightCm : Number(selectedLight.yCm ?? 290));
+  const intensity = Math.max(0, Number.isFinite(rawIntensity) ? rawIntensity : Number(selectedLight.intensity ?? 8));
+  const angleDeg = clampNumber(Number.isFinite(rawAngleDeg) ? rawAngleDeg : Number(selectedLight.angleDeg ?? 28), 5, 80);
+  const distance = Math.max(1, Number.isFinite(rawDistance) ? rawDistance : Number(selectedLight.distance ?? 12));
+  const penumbra = clampNumber(Number.isFinite(rawPenumbra) ? rawPenumbra : Number(selectedLight.penumbra ?? 0.22), 0, 1);
+  const targetPaintingId = configMapLightTargetPainting.value || undefined;
+  const targetPoint = getPaintingPlanPointById(targetPaintingId);
+
+  selectedLight.y = heightCm / 100;
+  selectedLight.yCm = Math.round(heightCm);
+  selectedLight.intensity = intensity;
+  selectedLight.distance = distance;
+  selectedLight.angleDeg = angleDeg;
+  selectedLight.angle = THREE.MathUtils.degToRad(angleDeg);
+  selectedLight.penumbra = penumbra;
+  selectedLight.decay = Number.isFinite(Number(selectedLight.decay)) ? Math.max(0, Number(selectedLight.decay)) : 1.2;
+  selectedLight.targetPaintingId = targetPaintingId;
+
+  if (targetPoint) {
+    selectedLight.targetX = targetPoint.x;
+    selectedLight.targetZ = targetPoint.z;
+    selectedLight.targetY = 1.65;
+    selectedLight.targetXCm = Math.round(targetPoint.x * 100);
+    selectedLight.targetZCm = Math.round(targetPoint.z * 100);
+    selectedLight.targetYCm = 165;
+  } else if (!targetPaintingId && !Number.isFinite(Number(selectedLight.targetX)) && !Number.isFinite(Number(selectedLight.targetZ))) {
+    const x = Number(selectedLight.x ?? 0);
+    const z = Number(selectedLight.z ?? 0);
+    selectedLight.targetX = x;
+    selectedLight.targetZ = z;
+    selectedLight.targetY = 1.65;
+    selectedLight.targetXCm = Math.round(x * 100);
+    selectedLight.targetZCm = Math.round(z * 100);
+    selectedLight.targetYCm = 165;
+  }
+
+  rebuildSceneFromConfig();
+  renderGalleryMapEditor();
+}
+
+function getMovingLightPreview(light: GallerySpotLightConfig): PlanPoint | null {
+  const moving = galleryMapEditorState.movingLight;
+  const pointer = galleryMapEditorState.dragCurrent;
+  if (!moving || !pointer || galleryMapEditorState.dragAction !== "moveLight" || moving.lightId !== light.id) {
+    return null;
+  }
+  const deltaX = pointer.x - moving.startPointer.x;
+  const deltaZ = pointer.z - moving.startPointer.z;
+  return applyPlanPointAssist({ x: moving.startX + deltaX, z: moving.startZ + deltaZ }, "generic");
+}
+
+function getGalleryLightPlanPoint(light: GallerySpotLightConfig): PlanPoint {
+  const preview = getMovingLightPreview(light);
+  if (preview) {
+    return preview;
+  }
+  return { x: Number(light.x ?? 0), z: Number(light.z ?? 0) };
+}
+
+function addGalleryLightAtPoint(point: PlanPoint) {
+  const lights = ensureGalleryLightsArray();
+  const rawHeightCm = Number(configMapLightHeightCm.value);
+  const rawIntensity = Number(configMapLightIntensity.value);
+  const rawAngleDeg = Number(configMapLightAngleDeg.value);
+  const rawDistance = Number(configMapLightDistanceM.value);
+  const rawPenumbra = Number(configMapLightPenumbra.value);
+  const heightCm = Math.max(120, Number.isFinite(rawHeightCm) ? rawHeightCm : 290);
+  const intensity = Math.max(0, Number.isFinite(rawIntensity) ? rawIntensity : 8);
+  const angleDeg = clampNumber(Number.isFinite(rawAngleDeg) ? rawAngleDeg : 28, 5, 80);
+  const distance = Math.max(1, Number.isFinite(rawDistance) ? rawDistance : 12);
+  const penumbra = clampNumber(Number.isFinite(rawPenumbra) ? rawPenumbra : 0.22, 0, 1);
+  const targetPaintingId = configMapLightTargetPainting.value || undefined;
+  const targetPoint = getPaintingPlanPointById(targetPaintingId);
+  const light: GallerySpotLightConfig = { id: nextGalleryLightId() };
+  light.x = point.x;
+  light.z = point.z;
+  light.y = heightCm / 100;
+  light.xCm = Math.round(point.x * 100);
+  light.zCm = Math.round(point.z * 100);
+  light.yCm = heightCm;
+  light.intensity = intensity;
+  light.distance = distance;
+  light.angle = THREE.MathUtils.degToRad(angleDeg);
+  light.angleDeg = angleDeg;
+  light.penumbra = penumbra;
+  light.decay = 1.2;
+  light.targetPaintingId = targetPaintingId;
+  if (targetPoint) {
+    light.targetX = targetPoint.x;
+    light.targetZ = targetPoint.z;
+    light.targetY = 1.65;
+    light.targetXCm = Math.round(targetPoint.x * 100);
+    light.targetZCm = Math.round(targetPoint.z * 100);
+    light.targetYCm = 165;
+  } else {
+    delete light.targetX;
+    delete light.targetY;
+    delete light.targetZ;
+    delete light.targetXCm;
+    delete light.targetYCm;
+    delete light.targetZCm;
+  }
+  lights.push(light);
+  setSelectedGalleryMapLight(light.id ?? null);
+  rebuildSceneFromConfig();
+  renderGalleryMapEditor();
+}
+
+function deleteGalleryLightAtPoint(point: PlanPoint) {
+  const nearest = findNearestGalleryLight(point);
+  if (!nearest) {
+    return;
+  }
+  const lights = ensureGalleryLightsArray();
+  lights.splice(nearest.index, 1);
+  if (galleryMapEditorState.selectedLightId === nearest.light.id) {
+    setSelectedGalleryMapLight(null);
+  }
+  rebuildSceneFromConfig();
+  renderGalleryMapEditor();
+}
+
+function applyGalleryLightMoveFromDrag(end: PlanPoint) {
+  const moving = galleryMapEditorState.movingLight;
+  if (!moving) {
+    return;
+  }
+  const light = ensureGalleryLightsArray().find((candidate) => candidate.id === moving.lightId);
+  if (!light) {
+    setSelectedGalleryMapLight(null);
+    return;
+  }
+  const deltaX = end.x - moving.startPointer.x;
+  const deltaZ = end.z - moving.startPointer.z;
+  const moved = applyPlanPointAssist({ x: moving.startX + deltaX, z: moving.startZ + deltaZ }, "generic");
+  const nextX = moved.x;
+  const nextZ = moved.z;
+  if (Math.abs(nextX - Number(light.x ?? 0)) < 0.0001 && Math.abs(nextZ - Number(light.z ?? 0)) < 0.0001) {
+    return;
+  }
+  light.x = nextX;
+  light.z = nextZ;
+  light.xCm = Math.round(nextX * 100);
+  light.zCm = Math.round(nextZ * 100);
+  if (!light.targetPaintingId && !Number.isFinite(Number(light.targetX)) && !Number.isFinite(Number(light.targetZ))) {
+    light.targetX = nextX;
+    light.targetZ = nextZ;
+    light.targetY = Number.isFinite(Number(light.targetY)) ? Number(light.targetY) : 1.65;
+    light.targetXCm = Math.round(nextX * 100);
+    light.targetZCm = Math.round(nextZ * 100);
+    light.targetYCm = Math.round(Number(light.targetY) * 100);
+  }
+  rebuildSceneFromConfig();
 }
 
 function getMovingRoomPreview(room: GalleryRoom): { x: number; z: number } | null {
@@ -1044,6 +1389,14 @@ function getGalleryPlanBounds() {
   ensureCustomWallsArray().forEach((wall, wallIndex) => {
     include(Number(wall.x1 ?? 0), Number(wall.z1 ?? 0));
     include(Number(wall.x2 ?? 0), Number(wall.z2 ?? 0));
+  });
+  ensureGalleryLightsArray().forEach((light) => {
+    const source = getGalleryLightPlanPoint(light);
+    include(source.x, source.z);
+    const target = getGalleryLightTargetPlanPoint(light);
+    if (target) {
+      include(target.x, target.z);
+    }
   });
   if (galleryMapEditorState.dragStart) {
     include(galleryMapEditorState.dragStart.x, galleryMapEditorState.dragStart.z);
@@ -1599,6 +1952,32 @@ function renderGalleryMapEditor() {
     })
     .join("");
 
+  const galleryLightLinks = ensureGalleryLightsArray()
+    .map((light) => {
+      const source = getGalleryLightPlanPoint(light);
+      const target = getGalleryLightTargetPlanPoint(light);
+      if (!target) {
+        return "";
+      }
+      const a = toScreen(source);
+      const b = toScreen(target);
+      return `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(
+        1
+      )}" stroke="rgba(245,158,11,0.75)" stroke-width="1.8" stroke-dasharray="5 4" />`;
+    })
+    .join("");
+
+  const galleryLightsSvg = ensureGalleryLightsArray()
+    .map((light) => {
+      const source = getGalleryLightPlanPoint(light);
+      const selected = light.id === galleryMapEditorState.selectedLightId;
+      const s = toScreen(source);
+      return `<circle cx="${s.x.toFixed(1)}" cy="${s.y.toFixed(1)}" r="${selected ? 6.5 : 5}" fill="${
+        selected ? "#f59e0b" : "#facc15"
+      }" stroke="${selected ? "#7c2d12" : "#92400e"}" stroke-width="${selected ? 2 : 1.4}" />`;
+    })
+    .join("");
+
   let preview = "";
   if (galleryMapEditorState.dragStart && galleryMapEditorState.dragCurrent) {
     const a = galleryMapEditorState.dragStart;
@@ -1626,6 +2005,8 @@ function renderGalleryMapEditor() {
     ${customWalls}
     ${roomOpenings}
     ${customWallOpenings}
+    ${galleryLightLinks}
+    ${galleryLightsSvg}
     ${preview}
   `;
 }
@@ -1919,12 +2300,39 @@ function attachGalleryMapEditor() {
       removeCustomWallAtPoint(applyPlanPointAssist(rawPoint, "generic"));
       return;
     }
+    if (galleryMapEditorState.tool === "light") {
+      const nearest = findNearestGalleryLight(rawPoint);
+      if (nearest) {
+        const lightId = nearest.light.id ?? nextGalleryLightId();
+        nearest.light.id = lightId;
+        setSelectedGalleryMapLight(lightId);
+        galleryMapEditorState.dragAction = "moveLight";
+        galleryMapEditorState.movingLight = {
+          lightId,
+          startPointer: rawPoint,
+          startX: Number(nearest.light.x ?? 0),
+          startZ: Number(nearest.light.z ?? 0),
+        };
+        galleryMapEditorState.dragStart = rawPoint;
+        galleryMapEditorState.dragCurrent = rawPoint;
+        configGalleryMapEditor.setPointerCapture(event.pointerId);
+        renderGalleryMapEditor();
+        return;
+      }
+      addGalleryLightAtPoint(applyPlanPointAssist(rawPoint, "generic"));
+      return;
+    }
+    if (galleryMapEditorState.tool === "delete-light") {
+      deleteGalleryLightAtPoint(applyPlanPointAssist(rawPoint, "generic"));
+      return;
+    }
 
     if (galleryMapEditorState.tool === "room") {
       const clickedRoom = findRoomAtPlanPoint(rawPoint);
       if (clickedRoom) {
         setSelectedGalleryMapRoom(clickedRoom.id);
         galleryMapEditorState.dragAction = "moveRoom";
+        galleryMapEditorState.movingLight = null;
         galleryMapEditorState.movingRoom = {
           roomId: clickedRoom.id,
           startPointer: rawPoint,
@@ -1939,11 +2347,13 @@ function attachGalleryMapEditor() {
       }
       setSelectedGalleryMapRoom(null);
       galleryMapEditorState.dragAction = "createRoom";
+      galleryMapEditorState.movingLight = null;
       const start = applyPlanPointAssist(rawPoint, "room-create");
       galleryMapEditorState.dragStart = start;
       galleryMapEditorState.dragCurrent = start;
     } else {
       galleryMapEditorState.dragAction = "createWall";
+      galleryMapEditorState.movingLight = null;
       const start = applyPlanPointAssist(rawPoint, "wall-create");
       galleryMapEditorState.dragStart = start;
       galleryMapEditorState.dragCurrent = start;
@@ -1986,6 +2396,8 @@ function attachGalleryMapEditor() {
       applyCustomWallFromDrag(start, end);
     } else if (galleryMapEditorState.dragAction === "moveRoom") {
       applyRoomMoveFromDrag(rawEnd);
+    } else if (galleryMapEditorState.dragAction === "moveLight") {
+      applyGalleryLightMoveFromDrag(rawEnd);
     }
     if (configGalleryMapEditor.hasPointerCapture(event.pointerId)) {
       configGalleryMapEditor.releasePointerCapture(event.pointerId);
@@ -1994,6 +2406,7 @@ function attachGalleryMapEditor() {
     galleryMapEditorState.dragStart = null;
     galleryMapEditorState.dragCurrent = null;
     galleryMapEditorState.movingRoom = null;
+    galleryMapEditorState.movingLight = null;
     renderGalleryMapEditor();
   };
 
@@ -2008,6 +2421,7 @@ function attachGalleryMapEditor() {
     galleryMapEditorState.dragStart = null;
     galleryMapEditorState.dragCurrent = null;
     galleryMapEditorState.movingRoom = null;
+    galleryMapEditorState.movingLight = null;
     renderGalleryMapEditor();
   });
   setSelectedGalleryMapRoom(null);
@@ -2422,10 +2836,6 @@ function ensureConfigLeafletMap() {
   });
 }
 
-function getActiveGalleryMapSubTab() {
-  return configGalleryMapSubTabButtons.find((button) => button.classList.contains("active"))?.dataset.galleryMapSubtab ?? "editor";
-}
-
 function setActiveGalleryMapSubTab(tabId: string) {
   configGalleryMapSubTabButtons.forEach((button) => {
     const selected = button.dataset.galleryMapSubtab === tabId;
@@ -2437,7 +2847,21 @@ function setActiveGalleryMapSubTab(tabId: string) {
     panel.classList.toggle("active", selected);
     panel.hidden = !selected;
   });
+  if (tabId === "lights") {
+    syncGalleryLightTargetOptions();
+    syncSelectedGalleryLightControls();
+    if (galleryMapEditorState.tool !== "light" && galleryMapEditorState.tool !== "delete-light") {
+      setActiveGalleryMapTool("light");
+    }
+  }
   if (tabId === "editor") {
+    if (galleryMapEditorState.tool === "light" || galleryMapEditorState.tool === "delete-light") {
+      setActiveGalleryMapTool("room");
+    }
+    window.setTimeout(() => {
+      renderGalleryMapEditor();
+    }, 0);
+  } else if (tabId === "lights") {
     window.setTimeout(() => {
       renderGalleryMapEditor();
     }, 0);
@@ -2466,7 +2890,7 @@ function setActiveConfigTab(tabId: string) {
       renderWhenCalendar();
     }, 0);
   }
-  if (tabId === "gallery-map" && getActiveGalleryMapSubTab() === "editor") {
+  if (tabId === "gallery-map") {
     window.setTimeout(() => {
       renderGalleryMapEditor();
     }, 0);
@@ -2493,7 +2917,9 @@ function syncConfigPanelFromConfig() {
   }
   ensureWhenCalendarViewMonth();
   renderWhenCalendar();
+  syncGalleryLightTargetOptions();
   setSelectedGalleryMapRoom(null);
+  syncSelectedGalleryLightControls();
   renderGalleryMapEditor();
 }
 
@@ -2583,6 +3009,15 @@ function attachConfigPanel() {
   };
   configWhereLat.addEventListener("change", onLocationInputChanged);
   configWhereLng.addEventListener("change", onLocationInputChanged);
+  const onGalleryLightParamsChanged = () => {
+    applySelectedGalleryLightParams();
+  };
+  configMapLightTargetPainting.addEventListener("change", onGalleryLightParamsChanged);
+  configMapLightHeightCm.addEventListener("change", onGalleryLightParamsChanged);
+  configMapLightIntensity.addEventListener("change", onGalleryLightParamsChanged);
+  configMapLightAngleDeg.addEventListener("change", onGalleryLightParamsChanged);
+  configMapLightDistanceM.addEventListener("change", onGalleryLightParamsChanged);
+  configMapLightPenumbra.addEventListener("change", onGalleryLightParamsChanged);
   setActiveGalleryMapSubTab("editor");
   setActiveConfigTab("intro");
 }

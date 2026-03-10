@@ -25,6 +25,7 @@ type PaintingInteractionsDeps = {
     computePaintingViewPosition: (spot: PaintingSpot) => THREE_NS.Vector3 | null;
     moveVisitorTo: (target: THREE_NS.Vector3, focusTarget: THREE_NS.Vector3 | null) => void;
     clampToWalkable: (point: THREE_NS.Vector3) => THREE_NS.Vector3 | null;
+    onPaintingPicked?: (paintingId: string) => void;
   };
 };
 
@@ -50,6 +51,7 @@ export function createPaintingInteractions(deps: PaintingInteractionsDeps) {
     computePaintingViewPosition,
     moveVisitorTo,
     clampToWalkable,
+    onPaintingPicked,
   } = actions;
   const { THREE, raycaster } = app.runtime;
   const { uiState, cardState, movement, visitor, dragPainting } = app.status;
@@ -164,6 +166,7 @@ export function createPaintingInteractions(deps: PaintingInteractionsDeps) {
     if (!hit) {
       return false;
     }
+    onPaintingPicked?.(hit.id);
     const entry = paintingRegistry.get(hit.id);
     if (uiState.editMode && entry && !entry.hasSourceImage) {
       movement.route = [];
