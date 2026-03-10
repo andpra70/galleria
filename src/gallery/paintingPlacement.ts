@@ -72,7 +72,7 @@ export function createPaintingPlacementHelpers({ THREE, upAxis, getRoomsById, ge
       (painting.wall ?? "north") as WallSide,
       painting.offset ?? 0,
       painting.centerY ?? 1.65,
-      wallThickness * 0.5 + frameDepth * 0.5 + 0.01
+      wallThickness + frameDepth * 0.5 + 0.01
     );
 
     frame.position.copy(transform.position);

@@ -71,15 +71,40 @@ export function createPaintingInteractions(deps: PaintingInteractionsDeps) {
   }
 
   function getFirstRoomWallHit(intersections: THREE_NS.Intersection<THREE_NS.Object3D>[]): RoomWallIntersection | null {
+    const nearDistanceEps = 0.002;
+    const nearestHits: RoomWallIntersection[] = [];
+    let nearestDistance = Number.POSITIVE_INFINITY;
     for (let i = 0; i < intersections.length; i += 1) {
       const hit = intersections[i] as RoomWallIntersection;
       const roomId = hit.object?.userData?.roomId;
       const wall = toWallSide(hit.object?.userData?.wall);
-      if (roomId && wall) {
-        return hit;
+      if (!roomId || !wall) {
+        continue;
+      }
+      if (!nearestHits.length) {
+        nearestHits.push(hit);
+        nearestDistance = hit.distance;
+        continue;
+      }
+      if (hit.distance <= nearestDistance + nearDistanceEps) {
+        nearestHits.push(hit);
+        continue;
+      }
+      break;
+    }
+    if (!nearestHits.length) {
+      return null;
+    }
+    const visitorRoomId = getCurrentVisitorRoomId();
+    if (visitorRoomId) {
+      for (let i = 0; i < nearestHits.length; i += 1) {
+        const hit = nearestHits[i];
+        if (hit.object.userData.roomId === visitorRoomId) {
+          return hit;
+        }
       }
     }
-    return null;
+    return nearestHits[0];
   }
 
   function getCurrentVisitorRoomId() {

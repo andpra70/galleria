@@ -55,14 +55,52 @@ export function createInteractionActions(deps: InteractionActionsDeps) {
     raycaster.setFromCamera(mouseNdc, camera);
   }
 
-  function getFirstRoomWallHit(intersections: THREE_NS.Intersection<THREE_NS.Object3D>[]): WallIntersection | null {
-    for (let i = 0; i < intersections.length; i += 1) {
-      const hit = intersections[i] as WallIntersection;
-      if (hit?.object?.userData?.roomId && hit?.object?.userData?.wall) {
-        return hit;
+  function getCurrentVisitorRoomId() {
+    const rooms = getConfig().rooms;
+    const x = visitor.position.x;
+    const z = visitor.position.z;
+    for (let i = rooms.length - 1; i >= 0; i -= 1) {
+      const room = rooms[i];
+      if (x >= room.x && x <= room.x + room.width && z >= room.z && z <= room.z + room.depth) {
+        return room.id;
       }
     }
     return null;
+  }
+
+  function getFirstRoomWallHit(intersections: THREE_NS.Intersection<THREE_NS.Object3D>[]): WallIntersection | null {
+    const nearDistanceEps = 0.002;
+    const nearestHits: WallIntersection[] = [];
+    let nearestDistance = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < intersections.length; i += 1) {
+      const hit = intersections[i] as WallIntersection;
+      if (!hit?.object?.userData?.roomId || !hit?.object?.userData?.wall) {
+        continue;
+      }
+      if (!nearestHits.length) {
+        nearestHits.push(hit);
+        nearestDistance = hit.distance;
+        continue;
+      }
+      if (hit.distance <= nearestDistance + nearDistanceEps) {
+        nearestHits.push(hit);
+        continue;
+      }
+      break;
+    }
+    if (!nearestHits.length) {
+      return null;
+    }
+    const visitorRoomId = getCurrentVisitorRoomId();
+    if (visitorRoomId) {
+      for (let i = 0; i < nearestHits.length; i += 1) {
+        const hit = nearestHits[i];
+        if (hit.object.userData.roomId === visitorRoomId) {
+          return hit;
+        }
+      }
+    }
+    return nearestHits[0];
   }
 
   function createPaintingFromWallHit(room: GalleryRoom, wall: WallSide, hitPoint: THREE_NS.Vector3): GalleryPainting {

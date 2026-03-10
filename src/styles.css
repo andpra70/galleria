@@ -557,6 +557,14 @@ body,
   cursor: pointer;
 }
 
+.gallery-map-camera-handle {
+  cursor: grab;
+}
+
+.gallery-map-camera-link {
+  pointer-events: none;
+}
+
 .gallery-map-room-handle.corner-nw,
 .gallery-map-room-handle.corner-se {
   cursor: nwse-resize;
