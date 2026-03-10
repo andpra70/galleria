@@ -114,6 +114,36 @@ function stripBaseFromPath(pathname: string): string {
   return normalized === "/" ? "" : normalized.slice(1);
 }
 
+function resolveRouteIdFromQuery(search: string): string | null {
+  const params = new URLSearchParams(search);
+  const explicitId = (params.get("id") ?? "").trim();
+  if (explicitId) {
+    return decodeURIComponent(explicitId);
+  }
+  const reserved = new Set(["showconfig", "config", "showbirdview", "birdview", "hideconfig", "hidebirdview", "id"]);
+  for (const [key, value] of params.entries()) {
+    const keyTrimmed = key.trim();
+    if (!keyTrimmed) {
+      continue;
+    }
+    if (reserved.has(keyTrimmed.toLowerCase())) {
+      continue;
+    }
+    if ((value ?? "").trim() !== "") {
+      continue;
+    }
+    return decodeURIComponent(keyTrimmed);
+  }
+  return null;
+}
+
+function encodeRouteIdAsPath(routeId: string): string {
+  return routeId
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/");
+}
+
 function resolveBootstrapFromRoute(): GalleryBootstrap {
   const relativePath = stripBaseFromPath(window.location.pathname);
   const segments = relativePath
@@ -123,7 +153,9 @@ function resolveBootstrapFromRoute(): GalleryBootstrap {
   if (segments[0]?.toLowerCase() === "index.html") {
     segments.shift();
   }
-  const routeId = segments.length > 0 ? decodeURIComponent(segments[0]) : null;
+  const routeIdFromPath = segments.length > 0 ? segments.map((segment) => decodeURIComponent(segment)).join("/") : null;
+  const routeIdFromQuery = resolveRouteIdFromQuery(window.location.search);
+  const routeId = routeIdFromPath || routeIdFromQuery;
   const fallbackConfigPath = "config/gallery.json";
   if (!routeId) {
     return {
@@ -134,7 +166,7 @@ function resolveBootstrapFromRoute(): GalleryBootstrap {
   }
   return {
     routeId,
-    configPath: `config/${routeId}.json`,
+    configPath: `config/${encodeRouteIdAsPath(routeId)}.json`,
     readOnly: true,
   };
 }
