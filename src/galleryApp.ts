@@ -284,6 +284,12 @@ type PlanWallRef =
   | { kind: "room"; roomId: string; wall: WallSide; length: number; from: PlanPoint; to: PlanPoint }
   | { kind: "customWall"; wallId: string; wallIndex: number; length: number; from: PlanPoint; to: PlanPoint };
 
+type GalleryBootstrap = {
+  routeId?: string | null;
+  configPath?: string;
+  readOnly?: boolean;
+};
+
 let config!: ShowConfig;
 let roomsById: Map<string, GalleryRoom> = new Map();
 const gallerySettings: GallerySettingsState = {
@@ -374,6 +380,7 @@ const galleryMapEditorState: {
   dragStart: PlanPoint | null;
   dragCurrent: PlanPoint | null;
   selectedRoomId: string | null;
+  selectedOpening: GalleryMapOpeningRef | null;
   selectedLightId: string | null;
   movingRoom: GalleryMapRoomMoveState | null;
   resizingRoom: GalleryMapRoomResizeState | null;
@@ -393,6 +400,7 @@ const galleryMapEditorState: {
   dragStart: null,
   dragCurrent: null,
   selectedRoomId: null,
+  selectedOpening: null,
   selectedLightId: null,
   movingRoom: null,
   resizingRoom: null,
@@ -413,6 +421,10 @@ const dragPainting: import("./gallery/appStatus").DragPaintingState = {
   paintingId: null,
   plane: new THREE.Plane(),
 };
+const galleryBootstrap = ((window as Window & { __GALLERIA_BOOTSTRAP__?: GalleryBootstrap }).__GALLERIA_BOOTSTRAP__ ??
+  {}) as GalleryBootstrap;
+const readOnlyMode = Boolean(galleryBootstrap.readOnly);
+const requestedConfigPath = (galleryBootstrap.configPath ?? "config/gallery.json").trim() || "config/gallery.json";
 
 const world = new THREE.Group();
 scene.add(world);
@@ -842,8 +854,29 @@ init().catch((err) => {
   console.error("Errore durante inizializzazione:", err);
 });
 
+async function fetchShowConfig(configPath: string) {
+  const response = await fetch(resolveAppUrl(configPath));
+  if (!response.ok) {
+    throw new Error(`Impossibile caricare ${configPath}: HTTP ${response.status}`);
+  }
+  const loaded = await response.json();
+  if (!isValidShowConfig(loaded)) {
+    throw new Error(`Formato configurazione non valido: ${configPath}`);
+  }
+  return loaded as ShowConfig;
+}
+
 async function init() {
-  config = await fetch(resolveAppUrl("config/gallery.json")).then((r) => r.json());
+  try {
+    config = await fetchShowConfig(requestedConfigPath);
+  } catch (error) {
+    if (requestedConfigPath !== "config/gallery.json") {
+      console.warn(`Fallback a config/gallery.json dopo errore su ${requestedConfigPath}`, error);
+      config = await fetchShowConfig("config/gallery.json");
+    } else {
+      throw error;
+    }
+  }
 
   applyVisitorConfig(config.visitor);
   buildWorld(config);
@@ -905,11 +938,13 @@ function applyVisitorConfig(visitorCfg: import("./gallery/types").VisitorConfig 
 }
 
 function setEditMode(enabled: boolean) {
-  uiState.editMode = Boolean(enabled);
+  uiState.editMode = readOnlyMode ? false : Boolean(enabled);
   configEditorShell.hidden = !uiState.editMode;
   editModeToggle.textContent = uiState.editMode ? "✎ Edit: ON" : "✎ Edit: OFF";
   editModeToggle.classList.toggle("edit-on", uiState.editMode);
   editModeToggle.setAttribute("aria-pressed", uiState.editMode ? "true" : "false");
+  editModeToggle.disabled = readOnlyMode;
+  editModeToggle.title = readOnlyMode ? "Modalita sola lettura" : "";
   filmstrip.hidden = !uiState.editMode;
   updateEditModeVisuals();
   if (uiState.editMode) {
@@ -1183,7 +1218,16 @@ function setSelectedGalleryMapRoom(roomId: string | null) {
   } else {
     galleryMapEditorState.selectedRoomId = roomId;
   }
+  galleryMapEditorState.selectedOpening = null;
   configMapDeleteRoomBtn.disabled = !galleryMapEditorState.selectedRoomId;
+}
+
+function setSelectedGalleryMapOpening(openingRef: GalleryMapOpeningRef | null) {
+  if (!openingRef || !resolveOpeningGeometryFromRef(openingRef)) {
+    galleryMapEditorState.selectedOpening = null;
+    return;
+  }
+  galleryMapEditorState.selectedOpening = openingRef;
 }
 
 function getSelectedGalleryLight() {
@@ -1202,6 +1246,7 @@ function setSelectedGalleryMapLight(lightId: string | null) {
     galleryMapEditorState.selectedLightId = lightId;
     galleryMapEditorState.selectedRoomId = null;
   }
+  galleryMapEditorState.selectedOpening = null;
   configMapDeleteRoomBtn.disabled = !galleryMapEditorState.selectedRoomId;
   syncGalleryLightTargetOptions();
   syncSelectedGalleryLightControls();
@@ -2437,6 +2482,30 @@ function findNearestOpeningOnWall(target: { wall: PlanWallRef; along: number }) 
   return { kind: "customWall" as const, wallIndex: wallRef.wallIndex, openingIndex: best.openingIndex };
 }
 
+function findOpeningRefAtPoint(point: PlanPoint) {
+  const nearest = findNearestPlanWall(point, 0.45);
+  if (!nearest) {
+    return null;
+  }
+  const target = findNearestOpeningOnWall(nearest);
+  if (!target) {
+    return null;
+  }
+  if (target.kind === "room") {
+    return {
+      kind: "room" as const,
+      roomId: target.room.id,
+      wall: target.wall,
+      openingIndex: target.openingIndex,
+    };
+  }
+  return {
+    kind: "customWall" as const,
+    wallIndex: target.wallIndex,
+    openingIndex: target.openingIndex,
+  };
+}
+
 function renderGalleryMapEditor() {
   const { width, height } = getGalleryMapEditorSize();
   const { toScreen, scale, bounds } = createPlanTransforms(width, height);
@@ -2447,6 +2516,9 @@ function renderGalleryMapEditor() {
     galleryMapEditorState.dragAction === "resizeOpeningStart" || galleryMapEditorState.dragAction === "resizeOpeningEnd";
   configGalleryMapEditor.style.cursor =
     galleryMapEditorState.panning || draggingCameraHandle || draggingOpeningHandle ? "grabbing" : "crosshair";
+  if (galleryMapEditorState.selectedOpening && !resolveOpeningGeometryFromRef(galleryMapEditorState.selectedOpening)) {
+    galleryMapEditorState.selectedOpening = null;
+  }
 
   const gridLines: string[] = [];
   const step = GALLERY_GRID_SNAP_M;
@@ -2574,10 +2646,12 @@ function renderGalleryMapEditor() {
       const endCapA = { x: b.x + nx * capHalf, y: b.y + ny * capHalf };
       const endCapB = { x: b.x - nx * capHalf, y: b.y - ny * capHalf };
       const resizing = galleryMapEditorState.resizingOpening;
+      const selected = Boolean(galleryMapEditorState.selectedOpening && openingRefMatches(geometry.ref, galleryMapEditorState.selectedOpening));
       const isResizingThis =
         (galleryMapEditorState.dragAction === "resizeOpeningStart" || galleryMapEditorState.dragAction === "resizeOpeningEnd") &&
         resizing &&
         openingRefMatches(geometry.ref, resizing.ref);
+      const emphasized = selected || isResizingThis;
       const startHandleActive = isResizingThis && resizing?.handle === "start";
       const endHandleActive = isResizingThis && resizing?.handle === "end";
       const handleBaseAttrs =
@@ -2613,10 +2687,12 @@ function renderGalleryMapEditor() {
         <g class="gallery-map-opening opening-${geometry.type}">
           <line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(
             1
-          )}" stroke="rgba(15,23,42,0.26)" stroke-width="${strokeHalo.toFixed(2)}" stroke-linecap="round" />
+          )}" stroke="${emphasized ? "rgba(15,23,42,0.36)" : "rgba(15,23,42,0.26)"}" stroke-width="${
+            emphasized ? (strokeHalo + 1.1).toFixed(2) : strokeHalo.toFixed(2)
+          }" stroke-linecap="round" />
           <line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(
             1
-          )}" stroke="${color}" stroke-width="${strokeMain.toFixed(2)}" stroke-linecap="round" />
+          )}" stroke="${color}" stroke-width="${emphasized ? (strokeMain + 1.1).toFixed(2) : strokeMain.toFixed(2)}" stroke-linecap="round" />
           <line x1="${startCapA.x.toFixed(1)}" y1="${startCapA.y.toFixed(1)}" x2="${startCapB.x.toFixed(1)}" y2="${startCapB.y.toFixed(
             1
           )}" stroke="${color}" stroke-width="${capWidth.toFixed(2)}" stroke-linecap="round" />
@@ -2920,6 +2996,8 @@ function addOpeningAtPoint(point: PlanPoint) {
   const height = heightCm / 100;
   const type = configMapOpeningType.value as "door" | "window" | "opening";
   const center = clampNumber(nearest.along, width * 0.5, Math.max(width * 0.5, nearest.wall.length - width * 0.5));
+  let createdRef: GalleryMapOpeningRef | null = null;
+  let roomToSelect: string | null = null;
 
   const targetWall = nearest.wall;
   if (targetWall.kind === "room") {
@@ -2928,6 +3006,7 @@ function addOpeningAtPoint(point: PlanPoint) {
       return;
     }
     room.openings = Array.isArray(room.openings) ? room.openings : [];
+    const openingIndex = room.openings.length;
     room.openings.push({
       id: `op_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
       type,
@@ -2941,6 +3020,13 @@ function addOpeningAtPoint(point: PlanPoint) {
       height,
       heightCm,
     });
+    createdRef = {
+      kind: "room",
+      roomId: room.id,
+      wall: targetWall.wall,
+      openingIndex,
+    };
+    roomToSelect = room.id;
     mirrorOpeningOnAdjacentRooms(room, targetWall.wall, { type, center, width, base, height });
   } else {
     const wall = ensureCustomWallsArray()[targetWall.wallIndex];
@@ -2948,6 +3034,7 @@ function addOpeningAtPoint(point: PlanPoint) {
       return;
     }
     wall.openings = Array.isArray(wall.openings) ? wall.openings : [];
+    const openingIndex = wall.openings.length;
     wall.openings.push({
       id: `op_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
       type,
@@ -2960,7 +3047,16 @@ function addOpeningAtPoint(point: PlanPoint) {
       height,
       heightCm,
     });
+    createdRef = {
+      kind: "customWall",
+      wallIndex: targetWall.wallIndex,
+      openingIndex,
+    };
   }
+  if (roomToSelect) {
+    setSelectedGalleryMapRoom(roomToSelect);
+  }
+  setSelectedGalleryMapOpening(createdRef);
   rebuildSceneFromConfig();
   renderGalleryMapEditor();
 }
@@ -2990,6 +3086,7 @@ function removeOpeningAtPoint(point: PlanPoint) {
     wall.openings.splice(target.openingIndex, 1);
   }
 
+  setSelectedGalleryMapOpening(null);
   rebuildSceneFromConfig();
   renderGalleryMapEditor();
 }
@@ -3010,6 +3107,10 @@ function removeCustomWallAtPoint(point: PlanPoint) {
 
 function setActiveGalleryMapTool(tool: GalleryMapTool) {
   galleryMapEditorState.tool = tool;
+  if (tool !== "opening") {
+    setSelectedGalleryMapOpening(null);
+    galleryMapEditorState.resizingOpening = null;
+  }
   configMapToolButtons.forEach((button) => {
     const active = button.dataset.mapTool === tool;
     button.classList.toggle("active", active);
@@ -3186,6 +3287,7 @@ function attachGalleryMapEditor() {
           if (openingRef.kind === "room") {
             setSelectedGalleryMapRoom(openingRef.roomId);
           }
+          setSelectedGalleryMapOpening(openingRef);
           configGalleryMapEditor.setPointerCapture(event.pointerId);
           renderGalleryMapEditor();
         }
@@ -3195,7 +3297,18 @@ function attachGalleryMapEditor() {
     const rawPoint = getPlanPointFromEditorEvent(event);
     if (galleryMapEditorState.tool === "opening") {
       galleryMapEditorState.resizingOpening = null;
-      addOpeningAtPoint(applyPlanPointAssist(rawPoint, "opening"));
+      const openingPoint = applyPlanPointAssist(rawPoint, "opening");
+      const existingOpeningRef = findOpeningRefAtPoint(openingPoint);
+      if (existingOpeningRef) {
+        if (existingOpeningRef.kind === "room") {
+          setSelectedGalleryMapRoom(existingOpeningRef.roomId);
+        }
+        setSelectedGalleryMapOpening(existingOpeningRef);
+        renderGalleryMapEditor();
+        return;
+      }
+      setSelectedGalleryMapOpening(null);
+      addOpeningAtPoint(openingPoint);
       return;
     }
     if (galleryMapEditorState.tool === "delete-opening") {
