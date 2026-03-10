@@ -1,6 +1,6 @@
 import * as THREE_NS from "three";
 import type { AppContext } from "./appServices";
-import type { GalleryRoom, PaintingRegistryEntry, PaintingSpot } from "./types";
+import type { PaintingRegistryEntry, PaintingSpot, WallSide } from "./types";
 
 type PaintingInteractionsDeps = {
   app: AppContext;
@@ -20,7 +20,6 @@ type PaintingInteractionsDeps = {
     deletePaintingEntry: (entry: PaintingRegistryEntry) => void;
     closePaintingCard: () => void;
     openPaintingCard: (spot: PaintingSpot) => void;
-    showEditPanelForEntry: (entry: PaintingRegistryEntry) => void;
     isNearPainting: (spot: PaintingSpot) => boolean;
     computePaintingViewPosition: (spot: PaintingSpot) => THREE_NS.Vector3 | null;
     moveVisitorTo: (target: THREE_NS.Vector3, focusTarget: THREE_NS.Vector3 | null) => void;
@@ -46,7 +45,6 @@ export function createPaintingInteractions(deps: PaintingInteractionsDeps) {
     deletePaintingEntry,
     closePaintingCard,
     openPaintingCard,
-    showEditPanelForEntry,
     isNearPainting,
     computePaintingViewPosition,
     moveVisitorTo,
@@ -55,10 +53,33 @@ export function createPaintingInteractions(deps: PaintingInteractionsDeps) {
   } = actions;
   const { THREE, raycaster } = app.runtime;
   const { uiState, cardState, movement, visitor, dragPainting } = app.status;
-  const { paintingDeleteMeshes, paintingMoveMeshes, paintingPickMeshes, paintingRegistry } = app.collections;
+  const { paintingDeleteMeshes, paintingMoveMeshes, paintingPickMeshes, paintingRegistry, wallMeshes } = app.collections;
   const { artEditPanel } = app.dom;
   const { mToCm } = app.helpers;
   const getRoomsById = app.status.refs.getRoomsById;
+
+  type RoomWallIntersection = THREE_NS.Intersection<THREE_NS.Object3D> & {
+    object: THREE_NS.Object3D & { userData: { roomId?: string; wall?: WallSide } };
+  };
+
+  function toWallSide(value: unknown): WallSide | null {
+    if (value === "north" || value === "south" || value === "west" || value === "east") {
+      return value;
+    }
+    return null;
+  }
+
+  function getFirstRoomWallHit(intersections: THREE_NS.Intersection<THREE_NS.Object3D>[]): RoomWallIntersection | null {
+    for (let i = 0; i < intersections.length; i += 1) {
+      const hit = intersections[i] as RoomWallIntersection;
+      const roomId = hit.object?.userData?.roomId;
+      const wall = toWallSide(hit.object?.userData?.wall);
+      if (roomId && wall) {
+        return hit;
+      }
+    }
+    return null;
+  }
 
   function handleDeleteHandleClick(clientX: number, clientY: number) {
     if (!uiState.editMode) {
@@ -86,11 +107,12 @@ export function createPaintingInteractions(deps: PaintingInteractionsDeps) {
       return false;
     }
     setPointerRay(clientX, clientY);
-    const hit = raycaster.intersectObjects(paintingMoveMeshes, false)[0];
-    if (!hit) {
-      return false;
-    }
-    const paintingId = hit.object.userData.paintingId as string | undefined;
+    const moveHandleHit = raycaster.intersectObjects(paintingMoveMeshes, false)[0];
+    const paintingPickHit = moveHandleHit ? null : raycaster.intersectObjects(paintingPickMeshes, false)[0];
+    const paintingId =
+      (moveHandleHit?.object.userData.paintingId as string | undefined) ??
+      (paintingPickHit?.object.userData.paintingId as string | undefined) ??
+      ((paintingPickHit?.object.userData.paintingSpot as PaintingSpot | undefined)?.id ?? undefined);
     if (!paintingId) {
       return false;
     }
@@ -99,6 +121,7 @@ export function createPaintingInteractions(deps: PaintingInteractionsDeps) {
       return false;
     }
 
+    onPaintingPicked?.(paintingId);
     dragPainting.active = true;
     dragPainting.pointerType = pointerType;
     dragPainting.paintingId = paintingId;
@@ -132,21 +155,36 @@ export function createPaintingInteractions(deps: PaintingInteractionsDeps) {
     }
 
     setPointerRay(clientX, clientY);
-    const point = new THREE.Vector3();
-    if (!raycaster.ray.intersectPlane(dragPainting.plane, point)) {
-      return;
-    }
-
     const roomsById = getRoomsById();
-    const room = entry.room ?? roomsById.get(entry.painting.roomId ?? "");
-    if (!room) {
-      return;
+    const wallHit = getFirstRoomWallHit(raycaster.intersectObjects(wallMeshes, false));
+    if (wallHit) {
+      const nextRoom = roomsById.get(wallHit.object.userData.roomId ?? "");
+      const nextWall = toWallSide(wallHit.object.userData.wall);
+      if (nextRoom && nextWall) {
+        entry.room = nextRoom;
+        entry.painting.roomId = nextRoom.id;
+        entry.painting.wall = nextWall;
+        const rawOffset = nextWall === "north" || nextWall === "south" ? wallHit.point.x - nextRoom.x : wallHit.point.z - nextRoom.z;
+        entry.painting.offset = clampPaintingOffset(entry, snapToStep(rawOffset, PAINTING_SNAP_M));
+        entry.painting.centerY = clampPaintingCenterY(entry, snapToStep(wallHit.point.y, PAINTING_SNAP_M));
+      }
+    } else {
+      const point = new THREE.Vector3();
+      if (!raycaster.ray.intersectPlane(dragPainting.plane, point)) {
+        return;
+      }
+      const room = entry.room ?? roomsById.get(entry.painting.roomId ?? "");
+      if (!room) {
+        return;
+      }
+      const wall = (entry.painting.wall ?? "north") as WallSide;
+      const rawOffset = wall === "north" || wall === "south" ? point.x - room.x : point.z - room.z;
+      entry.painting.offset = clampPaintingOffset(entry, snapToStep(rawOffset, PAINTING_SNAP_M));
+      entry.painting.centerY = clampPaintingCenterY(entry, snapToStep(point.y, PAINTING_SNAP_M));
     }
 
-    const rawOffset = entry.painting.wall === "north" || entry.painting.wall === "south" ? point.x - room.x : point.z - room.z;
-    entry.painting.offset = clampPaintingOffset(entry, snapToStep(rawOffset, PAINTING_SNAP_M));
-    entry.painting.centerY = clampPaintingCenterY(entry, snapToStep(point.y, PAINTING_SNAP_M));
     applyPaintingPlacement(entry);
+    dragPainting.plane.setFromNormalAndCoplanarPoint(entry.paintingSpot.normal.clone(), entry.paintingSpot.center.clone());
 
     if (cardState.paintingId === entry.painting.id && !artEditPanel.hidden) {
       artEditOffsetCm.value = String(Math.round(mToCm(entry.painting.offset)));
@@ -167,26 +205,12 @@ export function createPaintingInteractions(deps: PaintingInteractionsDeps) {
       return false;
     }
     onPaintingPicked?.(hit.id);
-    const entry = paintingRegistry.get(hit.id);
-    if (uiState.editMode && entry && !entry.hasSourceImage) {
-      movement.route = [];
-      movement.destination = null;
-      movement.finalDestination = null;
-      movement.focusTarget = hit.center.clone();
-      openPaintingCard(hit);
-      showEditPanelForEntry(entry);
-      return true;
-    }
 
     if (isNearPainting(hit)) {
       movement.route = [];
       movement.destination = null;
       movement.finalDestination = null;
       movement.focusTarget = hit.center.clone();
-      openPaintingCard(hit);
-      if (uiState.editMode && entry) {
-        showEditPanelForEntry(entry);
-      }
       return true;
     }
 
@@ -200,9 +224,6 @@ export function createPaintingInteractions(deps: PaintingInteractionsDeps) {
   }
 
   function handlePaintingInstantMoveOnDoubleClick(clientX: number, clientY: number) {
-    if (!uiState.editMode) {
-      return false;
-    }
     setPointerRay(clientX, clientY);
     const paintingHit = raycaster.intersectObjects(paintingPickMeshes, false)[0];
     if (!paintingHit) {
@@ -214,20 +235,18 @@ export function createPaintingInteractions(deps: PaintingInteractionsDeps) {
       return false;
     }
 
-    const viewPos = computePaintingViewPosition(hit);
-    if (!viewPos) {
-      return false;
-    }
-    const clamped = clampToWalkable(viewPos);
-    if (!clamped) {
-      return false;
-    }
-
+    onPaintingPicked?.(hit.id);
     movement.route = [];
     movement.destination = null;
     movement.finalDestination = null;
     movement.focusTarget = hit.center.clone();
-    visitor.position.copy(clamped);
+    if (!isNearPainting(hit)) {
+      const viewPos = computePaintingViewPosition(hit);
+      if (viewPos) {
+        moveVisitorTo(viewPos, hit.center.clone());
+      }
+    }
+    openPaintingCard(hit);
     return true;
   }
 

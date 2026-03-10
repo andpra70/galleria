@@ -34,6 +34,7 @@ export function createPaintingCardController(deps: PaintingCardControllerDeps) {
   function closePaintingCard() {
     cardState.paintingId = null;
     resetEditPanelDom(artEditDomElements);
+    artCard.classList.remove("is-editing");
     artCard.hidden = true;
   }
 
@@ -43,7 +44,7 @@ export function createPaintingCardController(deps: PaintingCardControllerDeps) {
     imageArg: unknown = null,
     spotArg: PaintingSpot | null = null
   ) {
-    if (!uiState.editMode) {
+    if (!uiState.editMode || !artCard.classList.contains("is-editing")) {
       return;
     }
     const roomsById = app.status.refs.getRoomsById();
@@ -93,9 +94,9 @@ export function createPaintingCardController(deps: PaintingCardControllerDeps) {
     const config = app.status.refs.getConfig();
     cardState.paintingId = paintingSpot.id;
     uiState.selectedPaintingId = paintingSpot.id;
+    artCard.classList.toggle("is-editing", uiState.editMode);
     renderPaintingCardContentDom(artCardDomElements, paintingSpot);
     getRenderFilmstrip()?.();
-
     if (uiState.editMode) {
       const entry = paintingRegistry.get(paintingSpot.id);
       if (entry) {
@@ -104,6 +105,8 @@ export function createPaintingCardController(deps: PaintingCardControllerDeps) {
         const painting = config.paintings.find((p: GalleryPainting) => p.id === paintingSpot.id);
         if (painting) {
           showEditPanelForPainting(painting);
+        } else {
+          resetEditPanelDom(artEditDomElements);
         }
       }
     } else {

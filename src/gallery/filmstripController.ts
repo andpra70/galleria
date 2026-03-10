@@ -12,14 +12,13 @@ type FilmstripControllerDeps = {
   app: AppContext;
   createNewCatalogPainting: () => GalleryPainting;
   openPaintingCard: (paintingSpot: PaintingSpot) => void;
-  showEditPanelForPainting: (painting: GalleryPainting) => void;
   closePaintingCard: () => void;
   setEditMode: (enabled: boolean) => void;
   getDeletePaintingEntry: () => ((entry: PaintingRegistryEntry, options?: DeletePaintingEntryOptions) => void) | undefined;
 };
 
 export function createFilmstripController(deps: FilmstripControllerDeps) {
-  const { app, createNewCatalogPainting, openPaintingCard, showEditPanelForPainting, closePaintingCard, setEditMode, getDeletePaintingEntry } = deps;
+  const { app, createNewCatalogPainting, openPaintingCard, closePaintingCard, setEditMode, getDeletePaintingEntry } = deps;
   const { status } = app;
   const { uiState, movement, visitor, cardState } = status;
   const { THREE } = app.runtime;
@@ -94,7 +93,7 @@ export function createFilmstripController(deps: FilmstripControllerDeps) {
     config.paintings.push(painting);
     uiState.selectedPaintingId = painting.id;
     renderFilmstrip();
-    openCatalogPainting(painting);
+    closePaintingCard();
   }
 
   function onFilmstripClick(event: MouseEvent) {
@@ -128,6 +127,22 @@ export function createFilmstripController(deps: FilmstripControllerDeps) {
       item.remove();
       return;
     }
+    const item = target?.closest(".filmstrip-item") as HTMLElement | null;
+    if (!item || !uiState.editMode) {
+      return;
+    }
+    const config = app.status.refs.getConfig();
+    const paintingId = item.dataset.paintingId;
+    const painting = config.paintings.find((p: GalleryPainting) => p.id === paintingId);
+    if (!painting) {
+      return;
+    }
+    uiState.selectedPaintingId = painting.id;
+    renderFilmstrip();
+  }
+
+  function onFilmstripDoubleClick(event: MouseEvent) {
+    const target = event.target as HTMLElement | null;
     const item = target?.closest(".filmstrip-item") as HTMLElement | null;
     if (!item || !uiState.editMode) {
       return;
@@ -186,8 +201,7 @@ export function createFilmstripController(deps: FilmstripControllerDeps) {
     config.paintings.push(painting);
     uiState.selectedPaintingId = painting.id;
     renderFilmstrip();
-    openCatalogPainting(painting);
-    showEditPanelForPainting(painting);
+    closePaintingCard();
   }
 
   return {
@@ -195,6 +209,7 @@ export function createFilmstripController(deps: FilmstripControllerDeps) {
     openCatalogPainting,
     onFilmstripAddClick,
     onFilmstripClick,
+    onFilmstripDoubleClick,
     onFilmstripDragStart,
     onFilmstripDragOver,
     onFilmstripDrop,

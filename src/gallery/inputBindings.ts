@@ -84,6 +84,7 @@ export function attachGalleryInput(elements: InputElements, handlers: InputHandl
     onSynopsisAddField,
     onSynopsisListClick,
     onFilmstripClick,
+    onFilmstripDoubleClick,
     onFilmstripDragStart,
     onFilmstripDragOver,
     onFilmstripDrop,
@@ -92,6 +93,19 @@ export function attachGalleryInput(elements: InputElements, handlers: InputHandl
     onCardImageDragLeave,
     onCardImageDrop,
   } = handlers;
+
+  const bindMenuAction = (button: HTMLButtonElement, handler: () => void | Promise<void>) => {
+    button.addEventListener("click", async () => {
+      try {
+        await handler();
+      } finally {
+        const menu = button.closest("details");
+        if (menu instanceof HTMLDetailsElement) {
+          menu.open = false;
+        }
+      }
+    });
+  };
 
   canvas.addEventListener("mousedown", onMouseDown);
   window.addEventListener("mousemove", onMouseMove);
@@ -110,11 +124,11 @@ export function attachGalleryInput(elements: InputElements, handlers: InputHandl
   configPanel.addEventListener("dragover", onConfigPanelDragOver);
   configPanel.addEventListener("dragleave", onConfigPanelDragLeave);
   configPanel.addEventListener("drop", onConfigPanelDrop);
-  configSaveLocalBtn.addEventListener("click", onSaveLocalShow);
-  configLoadLocalBtn.addEventListener("click", onLoadLocalShow);
-  configExportJsonBtn.addEventListener("click", onExportShowJson);
-  configImportJsonBtn.addEventListener("click", onImportShowJson);
-  configImportCatalogJsonBtn.addEventListener("click", onImportCatalogJson);
+  bindMenuAction(configSaveLocalBtn, onSaveLocalShow);
+  bindMenuAction(configLoadLocalBtn, onLoadLocalShow);
+  bindMenuAction(configExportJsonBtn, onExportShowJson);
+  bindMenuAction(configImportJsonBtn, onImportShowJson);
+  bindMenuAction(configImportCatalogJsonBtn, onImportCatalogJson);
   artCardClose.addEventListener("click", closePaintingCard);
   editModeToggle.addEventListener("click", onToggleEditMode);
 
@@ -131,6 +145,7 @@ export function attachGalleryInput(elements: InputElements, handlers: InputHandl
   artEditSynopsisAdd.addEventListener("click", onSynopsisAddField);
   artEditSynopsisList.addEventListener("click", onSynopsisListClick);
   filmstripItems.addEventListener("click", onFilmstripClick);
+  filmstripItems.addEventListener("dblclick", onFilmstripDoubleClick);
   filmstripItems.addEventListener("dragstart", onFilmstripDragStart);
   filmstrip.addEventListener("dragover", onFilmstripDragOver);
   filmstrip.addEventListener("drop", onFilmstripDrop);

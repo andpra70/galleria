@@ -90,6 +90,7 @@ const minimapCanvas = mustEl<HTMLCanvasElement>("minimap");
 const dragMeasureOverlaySvg = mustEl<SVGSVGElement>("drag-measure-overlay");
 const miniCtx = must2d(minimapCanvas);
 const configPanel = mustEl<HTMLDivElement>("config-panel");
+const configEditorShell = mustEl<HTMLElement>("config-editor-shell");
 const configSaveLocalBtn = mustEl<HTMLButtonElement>("config-save-local");
 const configLoadLocalBtn = mustEl<HTMLButtonElement>("config-load-local");
 const configExportJsonBtn = mustEl<HTMLButtonElement>("config-export-json");
@@ -128,6 +129,8 @@ const artEditMoveRight = mustEl<HTMLButtonElement>("art-edit-move-right");
 const artEditMoveUp = mustEl<HTMLButtonElement>("art-edit-move-up");
 const artEditMoveDown = mustEl<HTMLButtonElement>("art-edit-move-down");
 const artEditDelete = mustEl<HTMLButtonElement>("art-edit-delete");
+const artEditTabButtons = Array.from(document.querySelectorAll<HTMLButtonElement>("#art-edit-tabs .art-edit-tab"));
+const artEditTabPanels = Array.from(document.querySelectorAll<HTMLElement>("[data-art-edit-tab-panel]"));
 const configTabButtons = Array.from(document.querySelectorAll<HTMLButtonElement>("#config-tabs .config-tab"));
 const configTabPanels = Array.from(document.querySelectorAll<HTMLElement>("[data-config-tab-panel]"));
 const configWhenStartDate = mustEl<HTMLInputElement>("config-when-start-date");
@@ -203,14 +206,23 @@ const GALLERY_MAP_ZOOM_MIN = 0.35;
 const GALLERY_MAP_ZOOM_MAX = 7;
 
 type GalleryMapTool = "room" | "wall" | "opening" | "delete-opening" | "delete-wall" | "light" | "delete-light";
-type GalleryMapDragAction = "none" | "createRoom" | "createWall" | "moveRoom" | "moveLight";
+type GalleryMapDragAction = "none" | "createRoom" | "createWall" | "moveRoom" | "resizeRoom" | "moveLight";
 type PlanPoint = { x: number; z: number };
 type PlanAssistMode = "room-create" | "room-move" | "wall-create" | "opening" | "generic";
+type RoomCorner = "nw" | "ne" | "sw" | "se";
 type GalleryMapRoomMoveState = {
   roomId: string;
   startPointer: PlanPoint;
   startX: number;
   startZ: number;
+};
+type GalleryMapRoomResizeState = {
+  roomId: string;
+  corner: RoomCorner;
+  startX: number;
+  startZ: number;
+  startWidth: number;
+  startDepth: number;
 };
 type GalleryMapLightMoveState = {
   lightId: string;
@@ -312,6 +324,7 @@ let suppressNextPrimaryClick = false;
 let configLeafletMap: L.Map | null = null;
 let configLeafletMarker: L.Marker | null = null;
 let whenCalendarViewMonth = new Date();
+let lastGalleryMapObserverSignature = "";
 const galleryMapEditorState: {
   tool: GalleryMapTool;
   dragAction: GalleryMapDragAction;
@@ -320,6 +333,7 @@ const galleryMapEditorState: {
   selectedRoomId: string | null;
   selectedLightId: string | null;
   movingRoom: GalleryMapRoomMoveState | null;
+  resizingRoom: GalleryMapRoomResizeState | null;
   movingLight: GalleryMapLightMoveState | null;
   panning: GalleryMapPanState | null;
   viewZoom: number;
@@ -337,6 +351,7 @@ const galleryMapEditorState: {
   selectedRoomId: null,
   selectedLightId: null,
   movingRoom: null,
+  resizingRoom: null,
   movingLight: null,
   panning: null,
   viewZoom: 1,
@@ -538,7 +553,10 @@ const { onResize, animate } = createRuntimeLoop({
   updateMovement,
   updateFocusOrientation,
   updateCamera,
-  afterCameraUpdate: dragMeasureOverlay.update,
+  afterCameraUpdate: () => {
+    dragMeasureOverlay.update();
+    refreshGalleryMapObserverIfNeeded();
+  },
   drawMiniMap,
 });
 
@@ -563,7 +581,7 @@ const buildPainting = createPaintingBuilder({
   },
 });
 
-const { openPaintingCard, closePaintingCard, showEditPanelForEntry, showEditPanelForPainting } = createPaintingCardController({
+const { openPaintingCard, closePaintingCard, showEditPanelForEntry } = createPaintingCardController({
   app: appContext,
   artCardDomElements,
   artEditDomElements,
@@ -593,12 +611,20 @@ const { buildWorld, rebuildSceneFromConfig, loadShowConfig, createNewCatalogPain
   CM_PER_M,
 });
 
-const { renderFilmstrip, openCatalogPainting, onFilmstripAddClick, onFilmstripClick, onFilmstripDragStart, onFilmstripDragOver, onFilmstripDrop } =
+const {
+  renderFilmstrip,
+  openCatalogPainting,
+  onFilmstripAddClick,
+  onFilmstripClick,
+  onFilmstripDoubleClick,
+  onFilmstripDragStart,
+  onFilmstripDragOver,
+  onFilmstripDrop,
+} =
   createFilmstripController({
     app: appContext,
     createNewCatalogPainting,
     openPaintingCard,
-    showEditPanelForPainting,
     closePaintingCard,
     setEditMode,
     getDeletePaintingEntry: () => deletePaintingEntry,
@@ -734,7 +760,6 @@ const paintingInteractions = createPaintingInteractions({
     deletePaintingEntry,
     closePaintingCard,
     openPaintingCard,
-    showEditPanelForEntry,
     isNearPainting: movementActions.isNearPainting,
     computePaintingViewPosition,
     moveVisitorTo: movementActions.moveVisitorTo,
@@ -749,8 +774,6 @@ const inputEventHandlers = createInputEventHandlers({
   MAX_PITCH,
   paintingInteractions,
   applyPaintingImage,
-  openPaintingCard,
-  showEditPanelForEntry,
   closePaintingCard,
   loadShowConfig,
   importCatalogWorks,
@@ -777,6 +800,7 @@ async function init() {
   applyVisitorConfig(config.visitor);
   buildWorld(config);
   attachInput();
+  attachArtEditTabs();
   attachConfigPanel();
   syncConfigPanelFromConfig();
   setEditMode(false);
@@ -808,6 +832,7 @@ function applyVisitorConfig(visitorCfg: import("./gallery/types").VisitorConfig 
 
 function setEditMode(enabled: boolean) {
   uiState.editMode = Boolean(enabled);
+  configEditorShell.hidden = !uiState.editMode;
   editModeToggle.textContent = uiState.editMode ? "✎ Edit: ON" : "✎ Edit: OFF";
   editModeToggle.classList.toggle("edit-on", uiState.editMode);
   editModeToggle.setAttribute("aria-pressed", uiState.editMode ? "true" : "false");
@@ -815,22 +840,35 @@ function setEditMode(enabled: boolean) {
   updateEditModeVisuals();
   if (uiState.editMode) {
     renderFilmstrip();
+  } else {
+    setActiveArtEditTab("general");
   }
-  if (!uiState.editMode) {
-    resetEditPanelDom({
-      ...artEditDomElements,
-    });
-  } else if (!artCard.hidden && cardState.paintingId) {
-    const entry = paintingRegistry.get(cardState.paintingId);
-    if (entry) {
-      showEditPanelForEntry(entry);
-    } else {
-      const painting = config.paintings.find((p) => p.id === cardState.paintingId);
-      if (painting) {
-        showEditPanelForPainting(painting);
+}
+
+function setActiveArtEditTab(tabId: string) {
+  artEditTabButtons.forEach((button) => {
+    const selected = button.dataset.artEditTab === tabId;
+    button.classList.toggle("active", selected);
+    button.setAttribute("aria-selected", selected ? "true" : "false");
+  });
+  artEditTabPanels.forEach((panel) => {
+    const selected = panel.dataset.artEditTabPanel === tabId;
+    panel.classList.toggle("active", selected);
+    panel.hidden = !selected;
+  });
+}
+
+function attachArtEditTabs() {
+  artEditTabButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const tabId = button.dataset.artEditTab;
+      if (!uiState.editMode || !tabId) {
+        return;
       }
-    }
-  }
+      setActiveArtEditTab(tabId);
+    });
+  });
+  setActiveArtEditTab("general");
 }
 
 function updateEditModeVisuals() {
@@ -1133,6 +1171,45 @@ function getPaintingDimensionsCm(painting: (typeof config)["paintings"][number])
   return { widthCm: safeWidthCm, heightCm: safeHeightCm };
 }
 
+function getGalleryMapObserverSignature() {
+  return `${visitor.position.x.toFixed(2)}|${visitor.position.z.toFixed(2)}|${movement.yaw.toFixed(3)}`;
+}
+
+function isConfigTabActive(tabId: string) {
+  return configTabButtons.some((button) => button.dataset.configTab === tabId && button.classList.contains("active"));
+}
+
+function refreshGalleryMapObserverIfNeeded(force = false) {
+  if (!isConfigTabActive("gallery-map")) {
+    return;
+  }
+  const signature = getGalleryMapObserverSignature();
+  if (!force && signature === lastGalleryMapObserverSignature) {
+    return;
+  }
+  renderGalleryMapEditor();
+}
+
+function focusPaintingFromGalleryMap(paintingId: string) {
+  const painting = config.paintings.find((candidate) => candidate.id === paintingId && candidate.placed !== false);
+  if (!painting) {
+    return false;
+  }
+  uiState.selectedPaintingId = painting.id;
+  const entry = paintingRegistry.get(painting.id);
+  if (entry) {
+    closePaintingCard();
+    const viewPos = computePaintingViewPosition(entry.paintingSpot);
+    if (viewPos) {
+      movementActions.moveVisitorTo(viewPos, entry.paintingSpot.center.clone());
+    }
+  }
+  syncLightTargetSelectorFromPainting(painting.id);
+  renderFilmstrip();
+  renderGalleryMapEditor();
+  return true;
+}
+
 function getGalleryLightTargetPlanPoint(light: GallerySpotLightConfig) {
   const byPainting = getPaintingPlanPointById(light.targetPaintingId);
   if (byPainting) {
@@ -1393,6 +1470,63 @@ function getMovingRoomPreview(room: GalleryRoom): { x: number; z: number } | nul
   return assistMovedRoomPosition(room, moving.startX + deltaX, moving.startZ + deltaZ);
 }
 
+function computeResizedRoomFromState(resizing: GalleryMapRoomResizeState, rawPointer: PlanPoint) {
+  const minSize = GALLERY_GRID_SNAP_M;
+  let anchor: PlanPoint = { x: resizing.startX, z: resizing.startZ };
+  if (resizing.corner === "nw") {
+    anchor = { x: resizing.startX + resizing.startWidth, z: resizing.startZ + resizing.startDepth };
+  } else if (resizing.corner === "ne") {
+    anchor = { x: resizing.startX, z: resizing.startZ + resizing.startDepth };
+  } else if (resizing.corner === "sw") {
+    anchor = { x: resizing.startX + resizing.startWidth, z: resizing.startZ };
+  } else {
+    anchor = { x: resizing.startX, z: resizing.startZ };
+  }
+
+  const assisted = applyPlanPointAssist(rawPointer, "room-create", { anchor, ignoreRoomId: resizing.roomId });
+  if (resizing.corner === "nw") {
+    const x = Math.min(assisted.x, anchor.x - minSize);
+    const z = Math.min(assisted.z, anchor.z - minSize);
+    return { x, z, width: anchor.x - x, depth: anchor.z - z };
+  }
+  if (resizing.corner === "ne") {
+    const x2 = Math.max(assisted.x, anchor.x + minSize);
+    const z = Math.min(assisted.z, anchor.z - minSize);
+    return { x: anchor.x, z, width: x2 - anchor.x, depth: anchor.z - z };
+  }
+  if (resizing.corner === "sw") {
+    const x = Math.min(assisted.x, anchor.x - minSize);
+    const z2 = Math.max(assisted.z, anchor.z + minSize);
+    return { x, z: anchor.z, width: anchor.x - x, depth: z2 - anchor.z };
+  }
+  const x2 = Math.max(assisted.x, anchor.x + minSize);
+  const z2 = Math.max(assisted.z, anchor.z + minSize);
+  return { x: anchor.x, z: anchor.z, width: x2 - anchor.x, depth: z2 - anchor.z };
+}
+
+function getResizingRoomPreview(room: GalleryRoom): { x: number; z: number; width: number; depth: number } | null {
+  const resizing = galleryMapEditorState.resizingRoom;
+  const pointer = galleryMapEditorState.dragCurrent;
+  if (!resizing || !pointer || galleryMapEditorState.dragAction !== "resizeRoom" || resizing.roomId !== room.id) {
+    return null;
+  }
+  return computeResizedRoomFromState(resizing, pointer);
+}
+
+function getRoomEditorGeometry(room: GalleryRoom): { x: number; z: number; width: number; depth: number } {
+  const resized = getResizingRoomPreview(room);
+  if (resized) {
+    return resized;
+  }
+  const moved = getMovingRoomPreview(room);
+  return {
+    x: moved?.x ?? room.x,
+    z: moved?.z ?? room.z,
+    width: room.width,
+    depth: room.depth,
+  };
+}
+
 function getGalleryMapEditorSize() {
   const width = Math.max(280, Math.floor(configGalleryMapEditor.clientWidth || 360));
   const height = Math.max(240, Math.floor(configGalleryMapEditor.clientHeight || 360));
@@ -1415,11 +1549,9 @@ function getGalleryPlanBounds() {
   };
 
   config.rooms.forEach((room) => {
-    const moved = getMovingRoomPreview(room);
-    const roomX = moved?.x ?? room.x;
-    const roomZ = moved?.z ?? room.z;
-    include(roomX, roomZ);
-    include(roomX + room.width, roomZ + room.depth);
+    const preview = getRoomEditorGeometry(room);
+    include(preview.x, preview.z);
+    include(preview.x + preview.width, preview.z + preview.depth);
   });
   ensureCustomWallsArray().forEach((wall, wallIndex) => {
     include(Number(wall.x1 ?? 0), Number(wall.z1 ?? 0));
@@ -1925,22 +2057,42 @@ function renderGalleryMapEditor() {
 
   const roomsSvg = config.rooms
     .map((room) => {
-      const moved = getMovingRoomPreview(room);
-      const roomX = moved?.x ?? room.x;
-      const roomZ = moved?.z ?? room.z;
+      const preview = getRoomEditorGeometry(room);
+      const roomX = preview.x;
+      const roomZ = preview.z;
+      const roomWidth = preview.width;
+      const roomDepth = preview.depth;
       const selected = room.id === galleryMapEditorState.selectedRoomId;
       const a = toScreen({ x: roomX, z: roomZ });
-      const b = toScreen({ x: roomX + room.width, z: roomZ + room.depth });
+      const b = toScreen({ x: roomX + roomWidth, z: roomZ + roomDepth });
       const left = Math.min(a.x, b.x);
       const top = Math.min(a.y, b.y);
       const widthPx = Math.abs(b.x - a.x);
       const heightPx = Math.abs(b.y - a.y);
       const label = room.name ?? room.id;
+      const handles = selected
+        ? ([
+            { corner: "nw" as const, point: { x: roomX, z: roomZ } },
+            { corner: "ne" as const, point: { x: roomX + roomWidth, z: roomZ } },
+            { corner: "sw" as const, point: { x: roomX, z: roomZ + roomDepth } },
+            { corner: "se" as const, point: { x: roomX + roomWidth, z: roomZ + roomDepth } },
+          ] as Array<{ corner: RoomCorner; point: PlanPoint }>)
+            .map(({ corner, point }) => {
+              const p = toScreen(point);
+              return `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(
+                1
+              )}" r="5.2" class="gallery-map-room-handle corner-${corner}" data-room-handle-room-id="${
+                room.id
+              }" data-room-handle-corner="${corner}" fill="#f8fafc" stroke="#c2410c" stroke-width="2" />`;
+            })
+            .join("")
+        : "";
       return `
         <rect x="${left.toFixed(1)}" y="${top.toFixed(1)}" width="${widthPx.toFixed(1)}" height="${heightPx.toFixed(1)}" fill="${
           selected ? "rgba(251,146,60,0.18)" : "rgba(14,116,144,0.15)"
         }" stroke="${selected ? "#ea580c" : "rgba(15,23,42,0.88)"}" stroke-width="${selected ? 3 : 2}" />
         <text x="${(left + 6).toFixed(1)}" y="${(top + 14).toFixed(1)}" font-size="11" fill="#0f172a">${label}</text>
+        ${handles}
       `;
     })
     .join("");
@@ -1958,9 +2110,11 @@ function renderGalleryMapEditor() {
   const roomOpenings = config.rooms
     .flatMap((room) =>
       (room.openings ?? []).map((opening) => {
-        const moved = getMovingRoomPreview(room);
-        const roomX = moved?.x ?? room.x;
-        const roomZ = moved?.z ?? room.z;
+        const preview = getRoomEditorGeometry(room);
+        const roomX = preview.x;
+        const roomZ = preview.z;
+        const roomWidth = preview.width;
+        const roomDepth = preview.depth;
         const center = opening.center ?? 0;
         const widthM = opening.width ?? 1;
         let from: PlanPoint = { x: roomX, z: roomZ };
@@ -1969,14 +2123,14 @@ function renderGalleryMapEditor() {
           from = { x: roomX + center - widthM * 0.5, z: roomZ };
           to = { x: roomX + center + widthM * 0.5, z: roomZ };
         } else if (opening.wall === "south") {
-          from = { x: roomX + center - widthM * 0.5, z: roomZ + room.depth };
-          to = { x: roomX + center + widthM * 0.5, z: roomZ + room.depth };
+          from = { x: roomX + center - widthM * 0.5, z: roomZ + roomDepth };
+          to = { x: roomX + center + widthM * 0.5, z: roomZ + roomDepth };
         } else if (opening.wall === "west") {
           from = { x: roomX, z: roomZ + center - widthM * 0.5 };
           to = { x: roomX, z: roomZ + center + widthM * 0.5 };
         } else {
-          from = { x: roomX + room.width, z: roomZ + center - widthM * 0.5 };
-          to = { x: roomX + room.width, z: roomZ + center + widthM * 0.5 };
+          from = { x: roomX + roomWidth, z: roomZ + center - widthM * 0.5 };
+          to = { x: roomX + roomWidth, z: roomZ + center + widthM * 0.5 };
         }
         const a = toScreen(from);
         const b = toScreen(to);
@@ -2025,10 +2179,12 @@ function renderGalleryMapEditor() {
       const isSelected = painting.id === uiState.selectedPaintingId;
       const label = `${widthCm}x${heightCm} cm`;
       return `
-        <circle cx="${marker.x.toFixed(1)}" cy="${marker.y.toFixed(1)}" r="${isSelected ? 5.8 : 4.6}" fill="${
-          isSelected ? "#0ea5e9" : "#38bdf8"
-        }" stroke="${isSelected ? "#0c4a6e" : "#075985"}" stroke-width="${isSelected ? 1.8 : 1.2}" />
-        <text x="${(marker.x + 8).toFixed(1)}" y="${(marker.y - 6).toFixed(1)}" font-size="10.6" fill="#0f172a">${label}</text>
+        <g data-map-painting-id="${painting.id}" class="gallery-map-painting-marker">
+          <circle cx="${marker.x.toFixed(1)}" cy="${marker.y.toFixed(1)}" r="${isSelected ? 5.8 : 4.6}" fill="${
+            isSelected ? "#0ea5e9" : "#38bdf8"
+          }" stroke="${isSelected ? "#0c4a6e" : "#075985"}" stroke-width="${isSelected ? 1.8 : 1.2}" />
+          <text x="${(marker.x + 8).toFixed(1)}" y="${(marker.y - 6).toFixed(1)}" font-size="10.6" fill="#0f172a">${label}</text>
+        </g>
       `;
     })
     .join("");
@@ -2104,6 +2260,7 @@ function renderGalleryMapEditor() {
     ${observerSvg}
     ${preview}
   `;
+  lastGalleryMapObserverSignature = getGalleryMapObserverSignature();
 }
 
 function getPlanPointFromEditorEvent(event: PointerEvent): PlanPoint {
@@ -2164,6 +2321,42 @@ function applyRoomMoveFromDrag(end: PlanPoint) {
   }
   room.x = nextX;
   room.z = nextZ;
+  rebuildSceneFromConfig();
+}
+
+function applyRoomResizeFromDrag(end: PlanPoint) {
+  const resizing = galleryMapEditorState.resizingRoom;
+  if (!resizing) {
+    return;
+  }
+  const room = config.rooms.find((candidate) => candidate.id === resizing.roomId);
+  if (!room) {
+    setSelectedGalleryMapRoom(null);
+    return;
+  }
+  const next = computeResizedRoomFromState(resizing, end);
+  if (
+    Math.abs(next.x - room.x) < 0.0001 &&
+    Math.abs(next.z - room.z) < 0.0001 &&
+    Math.abs(next.width - room.width) < 0.0001 &&
+    Math.abs(next.depth - room.depth) < 0.0001
+  ) {
+    return;
+  }
+  room.x = next.x;
+  room.z = next.z;
+  room.width = next.width;
+  room.depth = next.depth;
+  room.widthCm = Math.round(next.width * 100);
+  room.depthCm = Math.round(next.depth * 100);
+  config.paintings.forEach((painting) => {
+    if (painting.roomId !== room.id) {
+      return;
+    }
+    const wall = (painting.wall ?? "north") as WallSide;
+    const span = getWallSpan(room, wall);
+    painting.offset = clampNumber(Number(painting.offset ?? 0), 0, span);
+  });
   rebuildSceneFromConfig();
 }
 
@@ -2399,6 +2592,44 @@ function attachGalleryMapEditor() {
     if (event.button !== 0) {
       return;
     }
+    const handleTarget = (event.target as Element | null)?.closest<SVGElement>("[data-room-handle-room-id]");
+    const handleRoomId = handleTarget?.getAttribute("data-room-handle-room-id");
+    const handleCornerRaw = handleTarget?.getAttribute("data-room-handle-corner");
+    if (
+      galleryMapEditorState.tool === "room" &&
+      handleRoomId &&
+      (handleCornerRaw === "nw" || handleCornerRaw === "ne" || handleCornerRaw === "sw" || handleCornerRaw === "se")
+    ) {
+      const room = config.rooms.find((candidate) => candidate.id === handleRoomId);
+      if (room) {
+        const rawPoint = getPlanPointFromEditorEvent(event);
+        setSelectedGalleryMapRoom(room.id);
+        galleryMapEditorState.dragAction = "resizeRoom";
+        galleryMapEditorState.movingLight = null;
+        galleryMapEditorState.movingRoom = null;
+        galleryMapEditorState.resizingRoom = {
+          roomId: room.id,
+          corner: handleCornerRaw,
+          startX: room.x,
+          startZ: room.z,
+          startWidth: room.width,
+          startDepth: room.depth,
+        };
+        galleryMapEditorState.dragStart = rawPoint;
+        galleryMapEditorState.dragCurrent = rawPoint;
+        galleryMapEditorState.panning = null;
+        configGalleryMapEditor.setPointerCapture(event.pointerId);
+        renderGalleryMapEditor();
+      }
+      return;
+    }
+    const markerTarget = (event.target as Element | null)?.closest<SVGElement>("[data-map-painting-id]");
+    const markerPaintingId = markerTarget?.getAttribute("data-map-painting-id");
+    if (markerPaintingId) {
+      event.preventDefault();
+      focusPaintingFromGalleryMap(markerPaintingId);
+      return;
+    }
     const rawPoint = getPlanPointFromEditorEvent(event);
     if (galleryMapEditorState.tool === "opening") {
       addOpeningAtPoint(applyPlanPointAssist(rawPoint, "opening"));
@@ -2425,6 +2656,7 @@ function attachGalleryMapEditor() {
           startX: Number(nearest.light.x ?? 0),
           startZ: Number(nearest.light.z ?? 0),
         };
+        galleryMapEditorState.resizingRoom = null;
         galleryMapEditorState.dragStart = rawPoint;
         galleryMapEditorState.dragCurrent = rawPoint;
         galleryMapEditorState.panning = null;
@@ -2446,6 +2678,7 @@ function attachGalleryMapEditor() {
         setSelectedGalleryMapRoom(clickedRoom.id);
         galleryMapEditorState.dragAction = "moveRoom";
         galleryMapEditorState.movingLight = null;
+        galleryMapEditorState.resizingRoom = null;
         galleryMapEditorState.movingRoom = {
           roomId: clickedRoom.id,
           startPointer: rawPoint,
@@ -2462,12 +2695,14 @@ function attachGalleryMapEditor() {
       setSelectedGalleryMapRoom(null);
       galleryMapEditorState.dragAction = "createRoom";
       galleryMapEditorState.movingLight = null;
+      galleryMapEditorState.resizingRoom = null;
       const start = applyPlanPointAssist(rawPoint, "room-create");
       galleryMapEditorState.dragStart = start;
       galleryMapEditorState.dragCurrent = start;
     } else {
       galleryMapEditorState.dragAction = "createWall";
       galleryMapEditorState.movingLight = null;
+      galleryMapEditorState.resizingRoom = null;
       const start = applyPlanPointAssist(rawPoint, "wall-create");
       galleryMapEditorState.dragStart = start;
       galleryMapEditorState.dragCurrent = start;
@@ -2528,6 +2763,8 @@ function attachGalleryMapEditor() {
       applyCustomWallFromDrag(start, end);
     } else if (galleryMapEditorState.dragAction === "moveRoom") {
       applyRoomMoveFromDrag(rawEnd);
+    } else if (galleryMapEditorState.dragAction === "resizeRoom") {
+      applyRoomResizeFromDrag(rawEnd);
     } else if (galleryMapEditorState.dragAction === "moveLight") {
       applyGalleryLightMoveFromDrag(rawEnd);
     }
@@ -2538,6 +2775,7 @@ function attachGalleryMapEditor() {
     galleryMapEditorState.dragStart = null;
     galleryMapEditorState.dragCurrent = null;
     galleryMapEditorState.movingRoom = null;
+    galleryMapEditorState.resizingRoom = null;
     galleryMapEditorState.movingLight = null;
     galleryMapEditorState.panning = null;
     renderGalleryMapEditor();
@@ -2580,6 +2818,7 @@ function attachGalleryMapEditor() {
     galleryMapEditorState.dragStart = null;
     galleryMapEditorState.dragCurrent = null;
     galleryMapEditorState.movingRoom = null;
+    galleryMapEditorState.resizingRoom = null;
     galleryMapEditorState.movingLight = null;
     galleryMapEditorState.panning = null;
     renderGalleryMapEditor();
@@ -3256,11 +3495,12 @@ function attachInput() {
       onInlineEditChanged,
       onSynopsisAddField: paintingEditorHandlers.onSynopsisAddField,
       onSynopsisListClick: paintingEditorHandlers.onSynopsisListClick,
-    onFilmstripClick,
-    onFilmstripDragStart,
-    onFilmstripDragOver,
-    onFilmstripDrop,
-    onFilmstripAddClick,
+      onFilmstripClick,
+      onFilmstripDoubleClick,
+      onFilmstripDragStart,
+      onFilmstripDragOver,
+      onFilmstripDrop,
+      onFilmstripAddClick,
       onCardImageDragOver: paintingEditorHandlers.onCardImageDragOver,
       onCardImageDragLeave: paintingEditorHandlers.onCardImageDragLeave,
       onCardImageDrop: paintingEditorHandlers.onCardImageDrop,

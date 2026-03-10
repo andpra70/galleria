@@ -33,8 +33,6 @@ type InputEventHandlersDeps = {
   MAX_PITCH: number;
   paintingInteractions: PaintingInteractionsApi;
   applyPaintingImage: (entry: PaintingRegistryEntry, imageUrl: string, isObjectUrl?: boolean) => void;
-  openPaintingCard: (paintingSpot: PaintingSpot) => void;
-  showEditPanelForEntry: (entry: PaintingRegistryEntry) => void;
   closePaintingCard: () => void;
   loadShowConfig: (nextConfig: unknown) => void;
   importCatalogWorks: (
@@ -54,8 +52,6 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
     MAX_PITCH,
     paintingInteractions,
     applyPaintingImage,
-    openPaintingCard,
-    showEditPanelForEntry,
     closePaintingCard,
     loadShowConfig,
     importCatalogWorks,
@@ -390,8 +386,7 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
 
     const objectUrl = URL.createObjectURL(file);
     applyPaintingImage(entry, objectUrl, true);
-    openPaintingCard(entry.paintingSpot);
-    showEditPanelForEntry(entry);
+    closePaintingCard();
   }
 
   function onConfigPanelDragOver(event: DragEvent) {
@@ -439,10 +434,8 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
   async function onSaveLocalShow() {
     try {
       await saveCurrentShowToLocalDb();
-      window.alert("Configurazione salvata in locale.");
     } catch (error) {
       console.error("Errore salvataggio locale IndexedDB:", error);
-      window.alert("Impossibile salvare in locale.");
     }
   }
 
@@ -450,19 +443,15 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
     try {
       const loaded = await loadShowFromLocalDb();
       if (!loaded) {
-        window.alert("Nessun salvataggio locale disponibile.");
         return;
       }
       if (!app.helpers.isValidShowConfig(loaded)) {
-        window.alert("Il salvataggio locale non e valido.");
         return;
       }
       loadShowConfig(loaded);
       syncConfigPanel();
-      window.alert("Configurazione locale caricata.");
     } catch (error) {
       console.error("Errore caricamento locale IndexedDB:", error);
-      window.alert("Impossibile caricare da locale.");
     }
   }
 

@@ -94,7 +94,7 @@ export function createInteractionActions(deps: InteractionActionsDeps) {
     clientY: number,
     options?: { openCard?: boolean }
   ) {
-    const openCard = options?.openCard ?? true;
+    const openCard = options?.openCard ?? false;
     const config = getConfig();
     const roomsById = getRoomsById();
     const painting = config.paintings.find((p) => p.id === paintingId);
@@ -201,8 +201,7 @@ export function createInteractionActions(deps: InteractionActionsDeps) {
     movement.destination = null;
     movement.finalDestination = null;
     movement.focusTarget = entry.paintingSpot.center.clone();
-    openPaintingCard(entry.paintingSpot);
-    showEditPanelForEntry(entry);
+    closePaintingCard();
     return true;
   }
 
