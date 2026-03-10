@@ -1,7 +1,7 @@
 :root {
   --bg: #dfe3e8;
-  --panel-bg: rgba(17, 24, 39, 0.78);
-  --panel-text: #f9fafb;
+  --panel-bg: rgba(255, 255, 255, 0.94);
+  --panel-text: #0f172a;
   --map-bg: rgba(255, 255, 255, 0.86);
   --map-border: rgba(17, 24, 39, 0.35);
   --card-bg: rgba(255, 255, 255, 0.96);
@@ -58,10 +58,12 @@ body,
   border-radius: 10px;
   background: var(--panel-bg);
   color: var(--panel-text);
+  border: 1px solid rgba(148, 163, 184, 0.65);
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.14);
   width: min(420px, calc(100vw - 32px));
   max-height: min(74vh, 680px);
   overflow: auto;
-  backdrop-filter: blur(2px);
+  backdrop-filter: blur(1px);
 }
 
 #config-panel.drop-target {
@@ -122,7 +124,7 @@ body,
   padding: 8px 10px;
   font-size: 0.82rem;
   cursor: pointer;
-  background: #0f172a;
+  background: #1e293b;
   color: #ffffff;
 }
 
@@ -139,8 +141,8 @@ body,
 .config-tab {
   border: 0;
   border-radius: 8px;
-  background: rgba(148, 163, 184, 0.25);
-  color: #f8fafc;
+  background: rgba(148, 163, 184, 0.26);
+  color: #0f172a;
   font-size: 0.8rem;
   padding: 6px 10px;
   cursor: pointer;
@@ -148,6 +150,7 @@ body,
 
 .config-tab.active {
   background: #0f766e;
+  color: #ffffff;
 }
 
 .config-tab-panel {
@@ -166,7 +169,7 @@ body,
 
 .config-field > span {
   font-size: 0.78rem;
-  color: #cbd5e1;
+  color: #475569;
 }
 
 .config-field input,
@@ -330,13 +333,39 @@ body,
   border-radius: 8px;
   padding: 6px 10px;
   font-size: 0.78rem;
-  background: rgba(148, 163, 184, 0.25);
-  color: #f8fafc;
+  background: rgba(148, 163, 184, 0.26);
+  color: #0f172a;
   cursor: pointer;
 }
 
 .config-map-tool.active {
   background: #0f766e;
+  color: #ffffff;
+}
+
+.config-map-tool.danger {
+  background: rgba(220, 38, 38, 0.14);
+  color: #991b1b;
+}
+
+.config-map-tool.danger.active {
+  background: #b91c1c;
+  color: #ffffff;
+}
+
+.config-map-toggle {
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 0.78rem;
+  background: rgba(148, 163, 184, 0.26);
+  color: #0f172a;
+  cursor: pointer;
+}
+
+.config-map-toggle.active {
+  background: #0f766e;
+  color: #ffffff;
 }
 
 #config-map-delete-room {
@@ -357,7 +386,7 @@ body,
 .config-map-snap {
   margin-left: auto;
   font-size: 0.75rem;
-  color: #cbd5e1;
+  color: #475569;
 }
 
 #config-gallery-map-editor-wrap {

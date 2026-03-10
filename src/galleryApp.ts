@@ -18,6 +18,7 @@ import type {
 import type {
   FloorMesh,
   GalleryRoom,
+  GalleryRoomOpening,
   GalleryWallMesh,
   PaintingCanvasMesh,
   PaintingFrameMesh,
@@ -140,6 +141,8 @@ const configWhereMap = mustEl<HTMLDivElement>("config-where-map");
 const configWhereLat = mustEl<HTMLInputElement>("config-where-lat");
 const configWhereLng = mustEl<HTMLInputElement>("config-where-lng");
 const configMapToolButtons = Array.from(document.querySelectorAll<HTMLButtonElement>(".config-map-tool"));
+const configMapToggleSnapBtn = mustEl<HTMLButtonElement>("config-map-toggle-snap");
+const configMapToggleMagnetBtn = mustEl<HTMLButtonElement>("config-map-toggle-magnet");
 const configMapDeleteRoomBtn = mustEl<HTMLButtonElement>("config-map-delete-room");
 const configMapWallHeightCm = mustEl<HTMLInputElement>("config-map-wall-height-cm");
 const configMapWallThicknessCm = mustEl<HTMLInputElement>("config-map-wall-thickness-cm");
@@ -176,12 +179,16 @@ const DEFAULT_EXHIBITION_LAT = 41.9028;
 const DEFAULT_EXHIBITION_LNG = 12.4964;
 const DEFAULT_EXHIBITION_ZOOM = 12;
 const GALLERY_GRID_SNAP_M = 0.2;
+const GALLERY_GRID_MAJOR_STEP_M = 1;
 const GALLERY_EDITOR_PADDING_M = 1;
 const GALLERY_EDITOR_MIN_SPAN_M = 4;
+const GALLERY_MAGNET_THRESHOLD_M = 0.15;
+const GALLERY_SIZE_MAGNET_THRESHOLD_M = 0.22;
 
-type GalleryMapTool = "room" | "wall" | "opening";
+type GalleryMapTool = "room" | "wall" | "opening" | "delete-opening" | "delete-wall";
 type GalleryMapDragAction = "none" | "createRoom" | "createWall" | "moveRoom";
 type PlanPoint = { x: number; z: number };
+type PlanAssistMode = "room-create" | "room-move" | "wall-create" | "opening" | "generic";
 type GalleryMapRoomMoveState = {
   roomId: string;
   startPointer: PlanPoint;
@@ -282,6 +289,8 @@ const galleryMapEditorState: {
   dragCurrent: PlanPoint | null;
   selectedRoomId: string | null;
   movingRoom: GalleryMapRoomMoveState | null;
+  snapToGrid: boolean;
+  magnet: boolean;
   widthPx: number;
   heightPx: number;
 } = {
@@ -291,6 +300,8 @@ const galleryMapEditorState: {
   dragCurrent: null,
   selectedRoomId: null,
   movingRoom: null,
+  snapToGrid: true,
+  magnet: true,
   widthPx: 0,
   heightPx: 0,
 };
@@ -739,7 +750,7 @@ function applyVisitorConfig(visitorCfg: import("./gallery/types").VisitorConfig 
 
 function setEditMode(enabled: boolean) {
   uiState.editMode = Boolean(enabled);
-  editModeToggle.textContent = uiState.editMode ? "Edit: ON" : "Edit: OFF";
+  editModeToggle.textContent = uiState.editMode ? "✎ Edit: ON" : "✎ Edit: OFF";
   editModeToggle.classList.toggle("edit-on", uiState.editMode);
   editModeToggle.setAttribute("aria-pressed", uiState.editMode ? "true" : "false");
   filmstrip.hidden = !uiState.editMode;
@@ -784,6 +795,178 @@ function snapPlanValue(value: number) {
   return snapToStep(value, GALLERY_GRID_SNAP_M);
 }
 
+function applyGridSnap(value: number) {
+  if (!galleryMapEditorState.snapToGrid) {
+    return value;
+  }
+  return snapPlanValue(value);
+}
+
+function magnetValue(value: number, candidates: number[], threshold: number) {
+  let best = value;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  candidates.forEach((candidate) => {
+    const distance = Math.abs(candidate - value);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = candidate;
+    }
+  });
+  if (bestDistance <= threshold) {
+    return best;
+  }
+  return value;
+}
+
+function collectMagnetAxisCandidates(ignoreRoomId?: string) {
+  const xCandidates: number[] = [];
+  const zCandidates: number[] = [];
+
+  config.rooms.forEach((room) => {
+    if (ignoreRoomId && room.id === ignoreRoomId) {
+      return;
+    }
+    xCandidates.push(room.x, room.x + room.width, room.x + room.width * 0.5);
+    zCandidates.push(room.z, room.z + room.depth, room.z + room.depth * 0.5);
+  });
+
+  ensureCustomWallsArray().forEach((wall) => {
+    xCandidates.push(Number(wall.x1 ?? 0), Number(wall.x2 ?? 0));
+    zCandidates.push(Number(wall.z1 ?? 0), Number(wall.z2 ?? 0));
+  });
+
+  return { xCandidates, zCandidates };
+}
+
+function collectRoomSizeMagnetCandidates(ignoreRoomId?: string) {
+  const widths: number[] = [];
+  const depths: number[] = [];
+  const ratios: number[] = [];
+  config.rooms.forEach((room) => {
+    if (ignoreRoomId && room.id === ignoreRoomId) {
+      return;
+    }
+    if (room.width > 0.01) {
+      widths.push(room.width);
+    }
+    if (room.depth > 0.01) {
+      depths.push(room.depth);
+    }
+    if (room.width > 0.01 && room.depth > 0.01) {
+      ratios.push(room.width / room.depth);
+    }
+  });
+  return { widths, depths, ratios };
+}
+
+function applyPlanPointAssist(
+  rawPoint: PlanPoint,
+  mode: PlanAssistMode,
+  options: { anchor?: PlanPoint; ignoreRoomId?: string } = {}
+): PlanPoint {
+  let x = applyGridSnap(rawPoint.x);
+  let z = applyGridSnap(rawPoint.z);
+
+  if (!galleryMapEditorState.magnet) {
+    return { x, z };
+  }
+
+  const { xCandidates, zCandidates } = collectMagnetAxisCandidates(options.ignoreRoomId);
+  x = magnetValue(x, xCandidates, GALLERY_MAGNET_THRESHOLD_M);
+  z = magnetValue(z, zCandidates, GALLERY_MAGNET_THRESHOLD_M);
+
+  if (mode === "room-create" && options.anchor) {
+    const anchor = options.anchor;
+    const signX = x >= anchor.x ? 1 : -1;
+    const signZ = z >= anchor.z ? 1 : -1;
+    const width = Math.abs(x - anchor.x);
+    const depth = Math.abs(z - anchor.z);
+    const sizeCandidates = collectRoomSizeMagnetCandidates(options.ignoreRoomId);
+
+    const snappedWidth = magnetValue(width, sizeCandidates.widths, GALLERY_SIZE_MAGNET_THRESHOLD_M);
+    if (Math.abs(snappedWidth - width) > 0.0001) {
+      x = anchor.x + signX * snappedWidth;
+    }
+    const snappedDepth = magnetValue(depth, sizeCandidates.depths, GALLERY_SIZE_MAGNET_THRESHOLD_M);
+    if (Math.abs(snappedDepth - depth) > 0.0001) {
+      z = anchor.z + signZ * snappedDepth;
+    }
+
+    const finalWidth = Math.abs(x - anchor.x);
+    const finalDepth = Math.abs(z - anchor.z);
+    if (finalWidth > 0.1 && finalDepth > 0.1) {
+      const ratio = finalWidth / finalDepth;
+      let bestRatio = ratio;
+      let bestDelta = Number.POSITIVE_INFINITY;
+      sizeCandidates.ratios.forEach((candidateRatio) => {
+        const delta = Math.abs(candidateRatio - ratio);
+        if (delta < bestDelta) {
+          bestDelta = delta;
+          bestRatio = candidateRatio;
+        }
+      });
+      if (bestDelta <= 0.18) {
+        const adjustedDepth = finalWidth / bestRatio;
+        const adjustedWidth = finalDepth * bestRatio;
+        const deltaDepth = Math.abs(adjustedDepth - finalDepth);
+        const deltaWidth = Math.abs(adjustedWidth - finalWidth);
+        if (deltaDepth < deltaWidth && deltaDepth <= GALLERY_SIZE_MAGNET_THRESHOLD_M) {
+          z = anchor.z + signZ * adjustedDepth;
+        } else if (deltaWidth <= GALLERY_SIZE_MAGNET_THRESHOLD_M) {
+          x = anchor.x + signX * adjustedWidth;
+        }
+      }
+    }
+  }
+
+  if (galleryMapEditorState.snapToGrid) {
+    x = snapPlanValue(x);
+    z = snapPlanValue(z);
+  }
+  return { x, z };
+}
+
+function assistMovedRoomPosition(room: GalleryRoom, rawX: number, rawZ: number) {
+  let x = applyGridSnap(rawX);
+  let z = applyGridSnap(rawZ);
+  if (!galleryMapEditorState.magnet) {
+    return { x, z };
+  }
+  const { xCandidates, zCandidates } = collectMagnetAxisCandidates(room.id);
+
+  let bestX = x;
+  let bestXDelta = Number.POSITIVE_INFINITY;
+  const xEdges = [x, x + room.width];
+  xCandidates.forEach((candidate) => {
+    xEdges.forEach((edge, index) => {
+      const delta = Math.abs(edge - candidate);
+      if (delta < bestXDelta && delta <= GALLERY_MAGNET_THRESHOLD_M) {
+        bestXDelta = delta;
+        bestX = candidate - (index === 0 ? 0 : room.width);
+      }
+    });
+  });
+
+  let bestZ = z;
+  let bestZDelta = Number.POSITIVE_INFINITY;
+  const zEdges = [z, z + room.depth];
+  zCandidates.forEach((candidate) => {
+    zEdges.forEach((edge, index) => {
+      const delta = Math.abs(edge - candidate);
+      if (delta < bestZDelta && delta <= GALLERY_MAGNET_THRESHOLD_M) {
+        bestZDelta = delta;
+        bestZ = candidate - (index === 0 ? 0 : room.depth);
+      }
+    });
+  });
+
+  if (galleryMapEditorState.snapToGrid) {
+    bestX = snapPlanValue(bestX);
+    bestZ = snapPlanValue(bestZ);
+  }
+  return { x: bestX, z: bestZ };
+}
+
 function nextRoomId() {
   let index = 1;
   while (config.rooms.some((room) => room.id === `room_${index}`)) {
@@ -820,10 +1003,7 @@ function getMovingRoomPreview(room: GalleryRoom): { x: number; z: number } | nul
   }
   const deltaX = pointer.x - moving.startPointer.x;
   const deltaZ = pointer.z - moving.startPointer.z;
-  return {
-    x: snapPlanValue(moving.startX + deltaX),
-    z: snapPlanValue(moving.startZ + deltaZ),
-  };
+  return assistMovedRoomPosition(room, moving.startX + deltaX, moving.startZ + deltaZ);
 }
 
 function getGalleryMapEditorSize() {
@@ -1047,6 +1227,64 @@ function getRoomWallLine(room: GalleryRoom, wall: WallSide) {
   };
 }
 
+function getOpeningCenterM(opening: GalleryRoomOpening) {
+  const center = Number(opening.center);
+  if (Number.isFinite(center)) {
+    return center;
+  }
+  const centerCm = Number(opening.centerCm);
+  if (Number.isFinite(centerCm)) {
+    return centerCm / CM_PER_M;
+  }
+  return 0;
+}
+
+function getOpeningWidthM(opening: GalleryRoomOpening) {
+  const width = Number(opening.width);
+  if (Number.isFinite(width) && width > 0) {
+    return width;
+  }
+  const widthCm = Number(opening.widthCm);
+  if (Number.isFinite(widthCm) && widthCm > 0) {
+    return widthCm / CM_PER_M;
+  }
+  return 0;
+}
+
+function getOpeningBaseM(opening: GalleryRoomOpening) {
+  const base = Number(opening.base);
+  if (Number.isFinite(base)) {
+    return base;
+  }
+  const baseCm = Number(opening.baseCm);
+  if (Number.isFinite(baseCm)) {
+    return baseCm / CM_PER_M;
+  }
+  return 0;
+}
+
+function getOpeningHeightM(opening: GalleryRoomOpening) {
+  const height = Number(opening.height);
+  if (Number.isFinite(height) && height > 0) {
+    return height;
+  }
+  const heightCm = Number(opening.heightCm);
+  if (Number.isFinite(heightCm) && heightCm > 0) {
+    return heightCm / CM_PER_M;
+  }
+  return 0;
+}
+
+function distanceToInterval(value: number, from: number, to: number) {
+  if (value < from) {
+    return from - value;
+  }
+  if (value > to) {
+    return value - to;
+  }
+  return 0;
+}
+
 function mirrorOpeningOnAdjacentRooms(
   room: GalleryRoom,
   wall: WallSide,
@@ -1113,12 +1351,132 @@ function mirrorOpeningOnAdjacentRooms(
   });
 }
 
+function removeMirroredOpeningOnAdjacentRooms(room: GalleryRoom, wall: WallSide, opening: GalleryRoomOpening) {
+  const matchEps = 0.001;
+  const center = getOpeningCenterM(opening);
+  const width = getOpeningWidthM(opening);
+  if (width <= matchEps) {
+    return;
+  }
+  const base = getOpeningBaseM(opening);
+  const height = getOpeningHeightM(opening);
+  const roomLine = getRoomWallLine(room, wall);
+  const oppositeWall = getOppositeWallSide(wall);
+  const openingWorldFrom = roomLine.start + center - width * 0.5;
+  const openingWorldTo = roomLine.start + center + width * 0.5;
+
+  config.rooms.forEach((candidateRoom) => {
+    if (candidateRoom.id === room.id || !Array.isArray(candidateRoom.openings) || candidateRoom.openings.length === 0) {
+      return;
+    }
+    const candidateLine = getRoomWallLine(candidateRoom, oppositeWall);
+    if (candidateLine.axis !== roomLine.axis || Math.abs(candidateLine.coord - roomLine.coord) > matchEps) {
+      return;
+    }
+
+    const sharedFrom = Math.max(roomLine.from, candidateLine.from);
+    const sharedTo = Math.min(roomLine.to, candidateLine.to);
+    if (sharedTo - sharedFrom <= matchEps) {
+      return;
+    }
+
+    candidateRoom.openings = candidateRoom.openings.filter((candidateOpening) => {
+      if (candidateOpening.wall !== oppositeWall) {
+        return true;
+      }
+      if (opening.type && candidateOpening.type && opening.type !== candidateOpening.type) {
+        return true;
+      }
+      const candidateCenter = getOpeningCenterM(candidateOpening);
+      const candidateWidth = getOpeningWidthM(candidateOpening);
+      if (candidateWidth <= matchEps) {
+        return true;
+      }
+      const candidateWorldFrom = candidateLine.start + candidateCenter - candidateWidth * 0.5;
+      const candidateWorldTo = candidateLine.start + candidateCenter + candidateWidth * 0.5;
+      const overlapFrom = Math.max(sharedFrom, openingWorldFrom, candidateWorldFrom);
+      const overlapTo = Math.min(sharedTo, openingWorldTo, candidateWorldTo);
+      if (overlapTo - overlapFrom <= 0.01) {
+        return true;
+      }
+      const candidateBase = getOpeningBaseM(candidateOpening);
+      const candidateHeight = getOpeningHeightM(candidateOpening);
+      const baseDelta = Math.abs(candidateBase - base);
+      const heightDelta = Math.abs(candidateHeight - height);
+      if (baseDelta > 0.05 || heightDelta > 0.05) {
+        return true;
+      }
+      return false;
+    });
+  });
+}
+
+function findNearestOpeningOnWall(target: { wall: PlanWallRef; along: number }) {
+  const alongToleranceM = 0.45;
+
+  if (target.wall.kind === "room") {
+    const wallRef = target.wall;
+    const room = config.rooms.find((candidate) => candidate.id === wallRef.roomId);
+    if (!room) {
+      return null;
+    }
+    const openings = Array.isArray(room.openings) ? room.openings : [];
+    let best: { openingIndex: number; distance: number } | null = null;
+    openings.forEach((opening, openingIndex) => {
+      if (opening.wall !== wallRef.wall) {
+        return;
+      }
+      const center = getOpeningCenterM(opening);
+      const width = Math.max(0, getOpeningWidthM(opening));
+      const from = center - width * 0.5;
+      const to = center + width * 0.5;
+      const distance = distanceToInterval(target.along, from, to);
+      if (!best || distance < best.distance) {
+        best = { openingIndex, distance };
+      }
+    });
+    if (!best || best.distance > alongToleranceM) {
+      return null;
+    }
+    return { kind: "room" as const, room, wall: wallRef.wall, openingIndex: best.openingIndex };
+  }
+
+  const wallRef = target.wall;
+  if (wallRef.kind !== "customWall") {
+    return null;
+  }
+  const wall = ensureCustomWallsArray()[wallRef.wallIndex];
+  if (!wall) {
+    return null;
+  }
+  const openings = Array.isArray(wall.openings) ? wall.openings : [];
+  let best: { openingIndex: number; distance: number } | null = null;
+  openings.forEach((opening, openingIndex) => {
+    const center = getOpeningCenterM(opening);
+    const width = Math.max(0, getOpeningWidthM(opening));
+    const from = center - width * 0.5;
+    const to = center + width * 0.5;
+    const distance = distanceToInterval(target.along, from, to);
+    if (!best || distance < best.distance) {
+      best = { openingIndex, distance };
+    }
+  });
+  if (!best || best.distance > alongToleranceM) {
+    return null;
+  }
+  return { kind: "customWall" as const, wallIndex: wallRef.wallIndex, openingIndex: best.openingIndex };
+}
+
 function renderGalleryMapEditor() {
   const { width, height } = getGalleryMapEditorSize();
   const { toScreen, scale, bounds } = createPlanTransforms(width, height);
 
   const gridLines: string[] = [];
   const step = GALLERY_GRID_SNAP_M;
+  const isMajorGridLine = (value: number) => {
+    const ratio = value / GALLERY_GRID_MAJOR_STEP_M;
+    return Math.abs(ratio - Math.round(ratio)) < 0.0001;
+  };
   const xStart = Math.floor(bounds.minX / step) * step;
   const xEnd = Math.ceil(bounds.maxX / step) * step;
   const zStart = Math.floor(bounds.minZ / step) * step;
@@ -1126,12 +1484,22 @@ function renderGalleryMapEditor() {
   for (let x = xStart; x <= xEnd + 0.0001; x += step) {
     const a = toScreen({ x, z: bounds.minZ });
     const b = toScreen({ x, z: bounds.maxZ });
-    gridLines.push(`<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="rgba(100,116,139,0.2)" stroke-width="1" />`);
+    const major = isMajorGridLine(x);
+    gridLines.push(
+      `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="${
+        major ? "#9ca3af" : "#d3d3d3"
+      }" stroke-width="${major ? 1.2 : 1}" />`
+    );
   }
   for (let z = zStart; z <= zEnd + 0.0001; z += step) {
     const a = toScreen({ x: bounds.minX, z });
     const b = toScreen({ x: bounds.maxX, z });
-    gridLines.push(`<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="rgba(100,116,139,0.2)" stroke-width="1" />`);
+    const major = isMajorGridLine(z);
+    gridLines.push(
+      `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="${
+        major ? "#9ca3af" : "#d3d3d3"
+      }" stroke-width="${major ? 1.2 : 1}" />`
+    );
   }
 
   const roomsSvg = config.rooms
@@ -1262,7 +1630,7 @@ function getPlanPointFromEditorEvent(event: PointerEvent): PlanPoint {
   const x = event.clientX - rect.left;
   const y = event.clientY - rect.top;
   const plan = toPlan(x, y);
-  return { x: snapPlanValue(plan.x), z: snapPlanValue(plan.z) };
+  return { x: plan.x, z: plan.z };
 }
 
 function applyRoomFromDrag(start: PlanPoint, end: PlanPoint) {
@@ -1305,8 +1673,9 @@ function applyRoomMoveFromDrag(end: PlanPoint) {
   }
   const deltaX = end.x - moving.startPointer.x;
   const deltaZ = end.z - moving.startPointer.z;
-  const nextX = snapPlanValue(moving.startX + deltaX);
-  const nextZ = snapPlanValue(moving.startZ + deltaZ);
+  const moved = assistMovedRoomPosition(room, moving.startX + deltaX, moving.startZ + deltaZ);
+  const nextX = moved.x;
+  const nextZ = moved.z;
   if (Math.abs(nextX - room.x) < 0.0001 && Math.abs(nextZ - room.z) < 0.0001) {
     return;
   }
@@ -1440,12 +1809,64 @@ function addOpeningAtPoint(point: PlanPoint) {
   renderGalleryMapEditor();
 }
 
+function removeOpeningAtPoint(point: PlanPoint) {
+  const nearestWall = findNearestPlanWall(point);
+  if (!nearestWall) {
+    return;
+  }
+  const target = findNearestOpeningOnWall(nearestWall);
+  if (!target) {
+    return;
+  }
+
+  if (target.kind === "room") {
+    target.room.openings = Array.isArray(target.room.openings) ? target.room.openings : [];
+    const [removedOpening] = target.room.openings.splice(target.openingIndex, 1);
+    if (removedOpening) {
+      removeMirroredOpeningOnAdjacentRooms(target.room, target.wall, removedOpening);
+    }
+  } else {
+    const wall = ensureCustomWallsArray()[target.wallIndex];
+    if (!wall) {
+      return;
+    }
+    wall.openings = Array.isArray(wall.openings) ? wall.openings : [];
+    wall.openings.splice(target.openingIndex, 1);
+  }
+
+  rebuildSceneFromConfig();
+  renderGalleryMapEditor();
+}
+
+function removeCustomWallAtPoint(point: PlanPoint) {
+  const nearestWall = findNearestPlanWall(point);
+  if (!nearestWall || nearestWall.wall.kind !== "customWall") {
+    return;
+  }
+  const walls = ensureCustomWallsArray();
+  if (nearestWall.wall.wallIndex < 0 || nearestWall.wall.wallIndex >= walls.length) {
+    return;
+  }
+  walls.splice(nearestWall.wall.wallIndex, 1);
+  rebuildSceneFromConfig();
+  renderGalleryMapEditor();
+}
+
 function setActiveGalleryMapTool(tool: GalleryMapTool) {
   galleryMapEditorState.tool = tool;
   configMapToolButtons.forEach((button) => {
     const active = button.dataset.mapTool === tool;
     button.classList.toggle("active", active);
   });
+}
+
+function syncGalleryMapAssistToggles() {
+  const snapActive = galleryMapEditorState.snapToGrid;
+  const magnetActive = galleryMapEditorState.magnet;
+  configMapToggleSnapBtn.classList.toggle("active", snapActive);
+  configMapToggleSnapBtn.setAttribute("aria-pressed", snapActive ? "true" : "false");
+  configMapToggleMagnetBtn.classList.toggle("active", magnetActive);
+  configMapToggleMagnetBtn.setAttribute("aria-pressed", magnetActive ? "true" : "false");
 }
 
 function attachGalleryMapEditor() {
@@ -1462,41 +1883,65 @@ function attachGalleryMapEditor() {
     });
   });
 
+  configMapToggleSnapBtn.addEventListener("click", () => {
+    galleryMapEditorState.snapToGrid = !galleryMapEditorState.snapToGrid;
+    syncGalleryMapAssistToggles();
+    renderGalleryMapEditor();
+  });
+
+  configMapToggleMagnetBtn.addEventListener("click", () => {
+    galleryMapEditorState.magnet = !galleryMapEditorState.magnet;
+    syncGalleryMapAssistToggles();
+    renderGalleryMapEditor();
+  });
+
   const onPointerDown = (event: PointerEvent) => {
     if (event.button !== 0) {
       return;
     }
-    const point = getPlanPointFromEditorEvent(event);
+    const rawPoint = getPlanPointFromEditorEvent(event);
     if (galleryMapEditorState.tool === "opening") {
-      addOpeningAtPoint(point);
+      addOpeningAtPoint(applyPlanPointAssist(rawPoint, "opening"));
+      return;
+    }
+    if (galleryMapEditorState.tool === "delete-opening") {
+      removeOpeningAtPoint(applyPlanPointAssist(rawPoint, "opening"));
+      return;
+    }
+    if (galleryMapEditorState.tool === "delete-wall") {
+      removeCustomWallAtPoint(applyPlanPointAssist(rawPoint, "generic"));
       return;
     }
 
     if (galleryMapEditorState.tool === "room") {
-      const clickedRoom = findRoomAtPlanPoint(point);
+      const clickedRoom = findRoomAtPlanPoint(rawPoint);
       if (clickedRoom) {
         setSelectedGalleryMapRoom(clickedRoom.id);
         galleryMapEditorState.dragAction = "moveRoom";
         galleryMapEditorState.movingRoom = {
           roomId: clickedRoom.id,
-          startPointer: point,
+          startPointer: rawPoint,
           startX: clickedRoom.x,
           startZ: clickedRoom.z,
         };
-        galleryMapEditorState.dragStart = point;
-        galleryMapEditorState.dragCurrent = point;
+        galleryMapEditorState.dragStart = rawPoint;
+        galleryMapEditorState.dragCurrent = rawPoint;
         configGalleryMapEditor.setPointerCapture(event.pointerId);
         renderGalleryMapEditor();
         return;
       }
       setSelectedGalleryMapRoom(null);
       galleryMapEditorState.dragAction = "createRoom";
+      const start = applyPlanPointAssist(rawPoint, "room-create");
+      galleryMapEditorState.dragStart = start;
+      galleryMapEditorState.dragCurrent = start;
     } else {
       galleryMapEditorState.dragAction = "createWall";
+      const start = applyPlanPointAssist(rawPoint, "wall-create");
+      galleryMapEditorState.dragStart = start;
+      galleryMapEditorState.dragCurrent = start;
     }
 
-    galleryMapEditorState.dragStart = point;
-    galleryMapEditorState.dragCurrent = point;
     configGalleryMapEditor.setPointerCapture(event.pointerId);
     renderGalleryMapEditor();
   };
@@ -1505,7 +1950,18 @@ function attachGalleryMapEditor() {
     if (!galleryMapEditorState.dragStart) {
       return;
     }
-    galleryMapEditorState.dragCurrent = getPlanPointFromEditorEvent(event);
+    const rawPoint = getPlanPointFromEditorEvent(event);
+    if (galleryMapEditorState.dragAction === "createRoom") {
+      galleryMapEditorState.dragCurrent = applyPlanPointAssist(rawPoint, "room-create", {
+        anchor: galleryMapEditorState.dragStart,
+      });
+    } else if (galleryMapEditorState.dragAction === "createWall") {
+      galleryMapEditorState.dragCurrent = applyPlanPointAssist(rawPoint, "wall-create", {
+        anchor: galleryMapEditorState.dragStart,
+      });
+    } else {
+      galleryMapEditorState.dragCurrent = rawPoint;
+    }
     renderGalleryMapEditor();
   };
 
@@ -1514,13 +1970,18 @@ function attachGalleryMapEditor() {
       return;
     }
     const start = galleryMapEditorState.dragStart;
-    const end = getPlanPointFromEditorEvent(event);
+    const rawEnd = getPlanPointFromEditorEvent(event);
     if (galleryMapEditorState.dragAction === "createRoom") {
+      const end = applyPlanPointAssist(rawEnd, "room-create", { anchor: start });
       applyRoomFromDrag(start, end);
     } else if (galleryMapEditorState.dragAction === "createWall") {
+      const end = applyPlanPointAssist(rawEnd, "wall-create", { anchor: start });
       applyCustomWallFromDrag(start, end);
     } else if (galleryMapEditorState.dragAction === "moveRoom") {
-      applyRoomMoveFromDrag(end);
+      applyRoomMoveFromDrag(rawEnd);
+    }
+    if (configGalleryMapEditor.hasPointerCapture(event.pointerId)) {
+      configGalleryMapEditor.releasePointerCapture(event.pointerId);
     }
     galleryMapEditorState.dragAction = "none";
     galleryMapEditorState.dragStart = null;
@@ -1532,7 +1993,10 @@ function attachGalleryMapEditor() {
   configGalleryMapEditor.addEventListener("pointerdown", onPointerDown);
   configGalleryMapEditor.addEventListener("pointermove", onPointerMove);
   configGalleryMapEditor.addEventListener("pointerup", onPointerUp);
-  configGalleryMapEditor.addEventListener("pointercancel", () => {
+  configGalleryMapEditor.addEventListener("pointercancel", (event) => {
+    if (configGalleryMapEditor.hasPointerCapture(event.pointerId)) {
+      configGalleryMapEditor.releasePointerCapture(event.pointerId);
+    }
     galleryMapEditorState.dragAction = "none";
     galleryMapEditorState.dragStart = null;
     galleryMapEditorState.dragCurrent = null;
@@ -1541,6 +2005,7 @@ function attachGalleryMapEditor() {
   });
   setSelectedGalleryMapRoom(null);
   setActiveGalleryMapTool("room");
+  syncGalleryMapAssistToggles();
 }
 
 function ensureExhibitionConfig() {

@@ -2,9 +2,9 @@ export function renderConfigPanel() {
   return `
     <section id="config-panel" aria-label="Configurazione mostra">
       <div id="config-toolbar" role="toolbar" aria-label="Import export configurazione">
-        <button id="load-catalog-json" type="button">Import</button>
-        <button id="save-show-json" type="button">Export</button>
-        <button id="edit-mode-toggle" type="button" aria-pressed="false">Edit: OFF</button>
+        <button id="load-catalog-json" type="button" title="Importa catalogo">⭳ Import</button>
+        <button id="save-show-json" type="button" title="Esporta configurazione">⭱ Export</button>
+        <button id="edit-mode-toggle" type="button" aria-pressed="false">✎ Edit: OFF</button>
       </div>
 
       <div id="config-tabs" role="tablist" aria-label="Sezioni configurazione mostra">
@@ -81,11 +81,15 @@ export function renderConfigPanel() {
 
       <div class="config-tab-panel" data-config-tab-panel="gallery-map" role="tabpanel" hidden>
         <div id="config-gallery-map-toolbar">
-          <button type="button" class="config-map-tool active" data-map-tool="room">Stanza</button>
-          <button type="button" class="config-map-tool" data-map-tool="wall">Muro</button>
-          <button type="button" class="config-map-tool" data-map-tool="opening">Apertura</button>
-          <button type="button" id="config-map-delete-room" disabled>Elimina stanza</button>
-          <span class="config-map-snap">Snap: 20 cm</span>
+          <button type="button" class="config-map-tool active" data-map-tool="room" title="Disegna o sposta stanza">▭ Stanza</button>
+          <button type="button" class="config-map-tool" data-map-tool="wall" title="Disegna muro">┃ Muro</button>
+          <button type="button" class="config-map-tool" data-map-tool="opening" title="Aggiungi apertura">⊔ Apertura</button>
+          <button type="button" class="config-map-tool danger" data-map-tool="delete-opening" title="Rimuovi apertura">⌫ Apertura</button>
+          <button type="button" class="config-map-tool danger" data-map-tool="delete-wall" title="Rimuovi muro custom">⌦ Muro</button>
+          <button type="button" class="config-map-toggle active" id="config-map-toggle-snap" aria-pressed="true" title="Snap a griglia 20cm">▦ Snap</button>
+          <button type="button" class="config-map-toggle active" id="config-map-toggle-magnet" aria-pressed="true" title="Magnet a elementi vicini">⌖ Magnet</button>
+          <button type="button" id="config-map-delete-room" disabled title="Elimina stanza selezionata">⌫ Stanza</button>
+          <span class="config-map-snap">Griglia: 20 cm</span>
         </div>
 
         <div class="config-inline-fields">
