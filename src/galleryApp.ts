@@ -199,6 +199,8 @@ const GALLERY_EDITOR_MIN_SPAN_M = 4;
 const GALLERY_MAGNET_THRESHOLD_M = 0.15;
 const GALLERY_SIZE_MAGNET_THRESHOLD_M = 0.22;
 const GALLERY_LIGHT_PICK_TOLERANCE_M = 0.45;
+const GALLERY_MAP_ZOOM_MIN = 0.35;
+const GALLERY_MAP_ZOOM_MAX = 7;
 
 type GalleryMapTool = "room" | "wall" | "opening" | "delete-opening" | "delete-wall" | "light" | "delete-light";
 type GalleryMapDragAction = "none" | "createRoom" | "createWall" | "moveRoom" | "moveLight";
@@ -215,6 +217,13 @@ type GalleryMapLightMoveState = {
   startPointer: PlanPoint;
   startX: number;
   startZ: number;
+};
+type GalleryMapPanState = {
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  startPanX: number;
+  startPanZ: number;
 };
 type PlanWallRef =
   | { kind: "room"; roomId: string; wall: WallSide; length: number; from: PlanPoint; to: PlanPoint }
@@ -312,6 +321,10 @@ const galleryMapEditorState: {
   selectedLightId: string | null;
   movingRoom: GalleryMapRoomMoveState | null;
   movingLight: GalleryMapLightMoveState | null;
+  panning: GalleryMapPanState | null;
+  viewZoom: number;
+  viewPanX: number;
+  viewPanZ: number;
   snapToGrid: boolean;
   magnet: boolean;
   widthPx: number;
@@ -325,6 +338,10 @@ const galleryMapEditorState: {
   selectedLightId: null,
   movingRoom: null,
   movingLight: null,
+  panning: null,
+  viewZoom: 1,
+  viewPanX: 0,
+  viewPanZ: 0,
   snapToGrid: true,
   magnet: true,
   widthPx: 0,
@@ -1098,6 +1115,24 @@ function getPaintingPlanPointById(paintingId?: string | null): PlanPoint | null 
   return { x: room.x + room.width, z: room.z + offset };
 }
 
+function getPaintingDimensionsCm(painting: (typeof config)["paintings"][number]) {
+  const widthFromCm = Number(painting.widthCm);
+  const heightFromCm = Number(painting.heightCm);
+  const widthFromM = Number(painting.width);
+  const heightFromM = Number(painting.height);
+  const safeWidthCm = Number.isFinite(widthFromCm) && widthFromCm > 0
+    ? Math.round(widthFromCm)
+    : Number.isFinite(widthFromM) && widthFromM > 0
+      ? Math.max(1, Math.round(mToCm(widthFromM)))
+      : 100;
+  const safeHeightCm = Number.isFinite(heightFromCm) && heightFromCm > 0
+    ? Math.round(heightFromCm)
+    : Number.isFinite(heightFromM) && heightFromM > 0
+      ? Math.max(1, Math.round(mToCm(heightFromM)))
+      : Math.max(1, Math.round(safeWidthCm * 0.75));
+  return { widthCm: safeWidthCm, heightCm: safeHeightCm };
+}
+
 function getGalleryLightTargetPlanPoint(light: GallerySpotLightConfig) {
   const byPainting = getPaintingPlanPointById(light.targetPaintingId);
   if (byPainting) {
@@ -1398,6 +1433,16 @@ function getGalleryPlanBounds() {
       include(target.x, target.z);
     }
   });
+  config.paintings
+    .filter((painting) => painting.placed !== false)
+    .forEach((painting) => {
+      const point = getPaintingPlanPointById(painting.id);
+      if (point) {
+        include(point.x, point.z);
+      }
+    });
+  include(visitor.position.x, visitor.position.z);
+  include(visitor.position.x + Math.sin(movement.yaw) * 1.2, visitor.position.z + Math.cos(movement.yaw) * 1.2);
   if (galleryMapEditorState.dragStart) {
     include(galleryMapEditorState.dragStart.x, galleryMapEditorState.dragStart.z);
   }
@@ -1434,21 +1479,36 @@ function getGalleryPlanBounds() {
 }
 
 function createPlanTransforms(width: number, height: number) {
-  const bounds = getGalleryPlanBounds();
-  const spanX = bounds.maxX - bounds.minX;
-  const spanZ = bounds.maxZ - bounds.minZ;
+  const contentBounds = getGalleryPlanBounds();
+  const spanX = contentBounds.maxX - contentBounds.minX;
+  const spanZ = contentBounds.maxZ - contentBounds.minZ;
   const padPx = 12;
-  const scale = Math.max(1, Math.min((width - padPx * 2) / spanX, (height - padPx * 2) / spanZ));
+  const baseScale = Math.max(0.08, Math.min((width - padPx * 2) / spanX, (height - padPx * 2) / spanZ));
+  const zoom = clampNumber(galleryMapEditorState.viewZoom, GALLERY_MAP_ZOOM_MIN, GALLERY_MAP_ZOOM_MAX);
+  const scale = Math.max(0.05, baseScale * zoom);
+  const baseCenterX = (contentBounds.minX + contentBounds.maxX) * 0.5;
+  const baseCenterZ = (contentBounds.minZ + contentBounds.maxZ) * 0.5;
+  const centerX = baseCenterX + galleryMapEditorState.viewPanX;
+  const centerZ = baseCenterZ + galleryMapEditorState.viewPanZ;
 
   const toScreen = (point: PlanPoint) => ({
-    x: padPx + (point.x - bounds.minX) * scale,
-    y: height - (padPx + (point.z - bounds.minZ) * scale),
+    x: width * 0.5 + (point.x - centerX) * scale,
+    y: height * 0.5 + (point.z - centerZ) * scale,
   });
   const toPlan = (sx: number, sy: number): PlanPoint => ({
-    x: bounds.minX + (sx - padPx) / scale,
-    z: bounds.minZ + (height - sy - padPx) / scale,
+    x: centerX + (sx - width * 0.5) / scale,
+    z: centerZ + (sy - height * 0.5) / scale,
   });
-  return { toScreen, toPlan, bounds, scale };
+
+  const cornerA = toPlan(0, 0);
+  const cornerB = toPlan(width, height);
+  const bounds = {
+    minX: Math.min(cornerA.x, cornerB.x),
+    maxX: Math.max(cornerA.x, cornerB.x),
+    minZ: Math.min(cornerA.z, cornerB.z),
+    maxZ: Math.max(cornerA.z, cornerB.z),
+  };
+  return { toScreen, toPlan, bounds, contentBounds, scale, baseScale, centerX, centerZ };
 }
 
 function collectPlanWalls(): PlanWallRef[] {
@@ -1830,6 +1890,7 @@ function findNearestOpeningOnWall(target: { wall: PlanWallRef; along: number }) 
 function renderGalleryMapEditor() {
   const { width, height } = getGalleryMapEditorSize();
   const { toScreen, scale, bounds } = createPlanTransforms(width, height);
+  configGalleryMapEditor.style.cursor = galleryMapEditorState.panning ? "grabbing" : "crosshair";
 
   const gridLines: string[] = [];
   const step = GALLERY_GRID_SNAP_M;
@@ -1952,6 +2013,26 @@ function renderGalleryMapEditor() {
     })
     .join("");
 
+  const paintingMarkersSvg = config.paintings
+    .filter((painting) => painting.placed !== false)
+    .map((painting) => {
+      const point = getPaintingPlanPointById(painting.id);
+      if (!point) {
+        return "";
+      }
+      const marker = toScreen(point);
+      const { widthCm, heightCm } = getPaintingDimensionsCm(painting);
+      const isSelected = painting.id === uiState.selectedPaintingId;
+      const label = `${widthCm}x${heightCm} cm`;
+      return `
+        <circle cx="${marker.x.toFixed(1)}" cy="${marker.y.toFixed(1)}" r="${isSelected ? 5.8 : 4.6}" fill="${
+          isSelected ? "#0ea5e9" : "#38bdf8"
+        }" stroke="${isSelected ? "#0c4a6e" : "#075985"}" stroke-width="${isSelected ? 1.8 : 1.2}" />
+        <text x="${(marker.x + 8).toFixed(1)}" y="${(marker.y - 6).toFixed(1)}" font-size="10.6" fill="#0f172a">${label}</text>
+      `;
+    })
+    .join("");
+
   const galleryLightLinks = ensureGalleryLightsArray()
     .map((light) => {
       const source = getGalleryLightPlanPoint(light);
@@ -1977,6 +2058,18 @@ function renderGalleryMapEditor() {
       }" stroke="${selected ? "#7c2d12" : "#92400e"}" stroke-width="${selected ? 2 : 1.4}" />`;
     })
     .join("");
+
+  const observerPoint = toScreen({ x: visitor.position.x, z: visitor.position.z });
+  const observerDirPoint = toScreen({
+    x: visitor.position.x + Math.sin(movement.yaw) * 1.25,
+    z: visitor.position.z + Math.cos(movement.yaw) * 1.25,
+  });
+  const observerSvg = `
+    <line x1="${observerPoint.x.toFixed(1)}" y1="${observerPoint.y.toFixed(1)}" x2="${observerDirPoint.x.toFixed(
+      1
+    )}" y2="${observerDirPoint.y.toFixed(1)}" stroke="#7f1d1d" stroke-width="2.4" stroke-linecap="round" />
+    <circle cx="${observerPoint.x.toFixed(1)}" cy="${observerPoint.y.toFixed(1)}" r="5.6" fill="#ef4444" stroke="#7f1d1d" stroke-width="1.5" />
+  `;
 
   let preview = "";
   if (galleryMapEditorState.dragStart && galleryMapEditorState.dragCurrent) {
@@ -2005,8 +2098,10 @@ function renderGalleryMapEditor() {
     ${customWalls}
     ${roomOpenings}
     ${customWallOpenings}
+    ${paintingMarkersSvg}
     ${galleryLightLinks}
     ${galleryLightsSvg}
+    ${observerSvg}
     ${preview}
   `;
 }
@@ -2284,6 +2379,23 @@ function attachGalleryMapEditor() {
   });
 
   const onPointerDown = (event: PointerEvent) => {
+    const wantsPan = event.button === 1 || event.button === 2 || (event.button === 0 && event.altKey);
+    if (wantsPan) {
+      event.preventDefault();
+      galleryMapEditorState.panning = {
+        pointerId: event.pointerId,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        startPanX: galleryMapEditorState.viewPanX,
+        startPanZ: galleryMapEditorState.viewPanZ,
+      };
+      if (configGalleryMapEditor.hasPointerCapture(event.pointerId)) {
+        configGalleryMapEditor.releasePointerCapture(event.pointerId);
+      }
+      configGalleryMapEditor.setPointerCapture(event.pointerId);
+      renderGalleryMapEditor();
+      return;
+    }
     if (event.button !== 0) {
       return;
     }
@@ -2315,6 +2427,7 @@ function attachGalleryMapEditor() {
         };
         galleryMapEditorState.dragStart = rawPoint;
         galleryMapEditorState.dragCurrent = rawPoint;
+        galleryMapEditorState.panning = null;
         configGalleryMapEditor.setPointerCapture(event.pointerId);
         renderGalleryMapEditor();
         return;
@@ -2341,6 +2454,7 @@ function attachGalleryMapEditor() {
         };
         galleryMapEditorState.dragStart = rawPoint;
         galleryMapEditorState.dragCurrent = rawPoint;
+        galleryMapEditorState.panning = null;
         configGalleryMapEditor.setPointerCapture(event.pointerId);
         renderGalleryMapEditor();
         return;
@@ -2364,6 +2478,16 @@ function attachGalleryMapEditor() {
   };
 
   const onPointerMove = (event: PointerEvent) => {
+    if (galleryMapEditorState.panning && galleryMapEditorState.panning.pointerId === event.pointerId) {
+      const { width, height } = getGalleryMapEditorSize();
+      const { scale } = createPlanTransforms(width, height);
+      const deltaX = event.clientX - galleryMapEditorState.panning.startClientX;
+      const deltaY = event.clientY - galleryMapEditorState.panning.startClientY;
+      galleryMapEditorState.viewPanX = galleryMapEditorState.panning.startPanX - deltaX / Math.max(0.01, scale);
+      galleryMapEditorState.viewPanZ = galleryMapEditorState.panning.startPanZ - deltaY / Math.max(0.01, scale);
+      renderGalleryMapEditor();
+      return;
+    }
     if (!galleryMapEditorState.dragStart) {
       return;
     }
@@ -2383,6 +2507,14 @@ function attachGalleryMapEditor() {
   };
 
   const onPointerUp = (event: PointerEvent) => {
+    if (galleryMapEditorState.panning && galleryMapEditorState.panning.pointerId === event.pointerId) {
+      galleryMapEditorState.panning = null;
+      if (configGalleryMapEditor.hasPointerCapture(event.pointerId)) {
+        configGalleryMapEditor.releasePointerCapture(event.pointerId);
+      }
+      renderGalleryMapEditor();
+      return;
+    }
     if (!galleryMapEditorState.dragStart || !galleryMapEditorState.dragCurrent) {
       return;
     }
@@ -2407,12 +2539,39 @@ function attachGalleryMapEditor() {
     galleryMapEditorState.dragCurrent = null;
     galleryMapEditorState.movingRoom = null;
     galleryMapEditorState.movingLight = null;
+    galleryMapEditorState.panning = null;
+    renderGalleryMapEditor();
+  };
+
+  const onWheel = (event: WheelEvent) => {
+    event.preventDefault();
+    const { width, height } = getGalleryMapEditorSize();
+    const rect = configGalleryMapEditor.getBoundingClientRect();
+    const sx = event.clientX - rect.left;
+    const sy = event.clientY - rect.top;
+    const before = createPlanTransforms(width, height).toPlan(sx, sy);
+    const nextZoom = clampNumber(
+      galleryMapEditorState.viewZoom * Math.exp(-event.deltaY * 0.0016),
+      GALLERY_MAP_ZOOM_MIN,
+      GALLERY_MAP_ZOOM_MAX
+    );
+    if (Math.abs(nextZoom - galleryMapEditorState.viewZoom) < 0.00001) {
+      return;
+    }
+    galleryMapEditorState.viewZoom = nextZoom;
+    const after = createPlanTransforms(width, height).toPlan(sx, sy);
+    galleryMapEditorState.viewPanX += before.x - after.x;
+    galleryMapEditorState.viewPanZ += before.z - after.z;
     renderGalleryMapEditor();
   };
 
   configGalleryMapEditor.addEventListener("pointerdown", onPointerDown);
   configGalleryMapEditor.addEventListener("pointermove", onPointerMove);
   configGalleryMapEditor.addEventListener("pointerup", onPointerUp);
+  configGalleryMapEditor.addEventListener("wheel", onWheel, { passive: false });
+  configGalleryMapEditor.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+  });
   configGalleryMapEditor.addEventListener("pointercancel", (event) => {
     if (configGalleryMapEditor.hasPointerCapture(event.pointerId)) {
       configGalleryMapEditor.releasePointerCapture(event.pointerId);
@@ -2422,6 +2581,7 @@ function attachGalleryMapEditor() {
     galleryMapEditorState.dragCurrent = null;
     galleryMapEditorState.movingRoom = null;
     galleryMapEditorState.movingLight = null;
+    galleryMapEditorState.panning = null;
     renderGalleryMapEditor();
   });
   setSelectedGalleryMapRoom(null);
