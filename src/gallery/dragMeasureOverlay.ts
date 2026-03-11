@@ -1,6 +1,6 @@
 import * as THREE_NS from "three";
 import type { AppContext } from "./appServices";
-import type { PaintingRegistryEntry, WallSide } from "./types";
+import type { CustomWallConfig, PaintingRegistryEntry, WallSide } from "./types";
 
 type DragMeasureOverlayDeps = {
   app: AppContext;
@@ -21,6 +21,7 @@ export function createDragMeasureOverlay({ app, overlaySvg }: DragMeasureOverlay
   const { dragPainting } = app.status;
   const { paintingRegistry } = app.collections;
   const getRoomsById = app.status.refs.getRoomsById;
+  const getConfig = app.status.refs.getConfig;
   const scratchRight = new THREE_NS.Vector3();
   const scratchUp = new THREE_NS.Vector3(0, 1, 0);
   const tmp = new THREE_NS.Vector3();
@@ -51,7 +52,25 @@ export function createDragMeasureOverlay({ app, overlaySvg }: DragMeasureOverlay
     return `${Math.max(0, value).toFixed(2)} m`;
   }
 
+  function findCustomWallForEntry(entry: PaintingRegistryEntry): CustomWallConfig | null {
+    const customWallId = (entry.painting.customWallId ?? "").trim();
+    if (!customWallId) {
+      return null;
+    }
+    const customWalls = getConfig().customWalls ?? [];
+    return customWalls.find((wall) => (wall.id ?? "").trim() === customWallId) ?? null;
+  }
+
   function wallEdgeWorldPoints(entry: PaintingRegistryEntry): { min: THREE_NS.Vector3; max: THREE_NS.Vector3 } | null {
+    const customWall = findCustomWallForEntry(entry);
+    if (customWall) {
+      const y = entry.paintingSpot.center.y;
+      return {
+        min: new THREE_NS.Vector3(Number(customWall.x1 ?? 0), y, Number(customWall.z1 ?? 0)),
+        max: new THREE_NS.Vector3(Number(customWall.x2 ?? 0), y, Number(customWall.z2 ?? 0)),
+      };
+    }
+
     const room = entry.room ?? getRoomsById().get(entry.painting.roomId ?? "");
     if (!room) {
       return null;
@@ -75,11 +94,6 @@ export function createDragMeasureOverlay({ app, overlaySvg }: DragMeasureOverlay
 
   function buildMeasureLines(entry: PaintingRegistryEntry): MeasureLine[] {
     const lines: MeasureLine[] = [];
-    const room = entry.room ?? getRoomsById().get(entry.painting.roomId ?? "");
-    if (!room) {
-      return lines;
-    }
-
     const center = entry.paintingSpot.center;
     const width = entry.paintingSpot.width;
     const height = entry.paintingSpot.height;
@@ -95,10 +109,24 @@ export function createDragMeasureOverlay({ app, overlaySvg }: DragMeasureOverlay
     const floorPoint = new THREE_NS.Vector3(bottomCenter.x, 0, bottomCenter.z);
 
     const edgePoints = wallEdgeWorldPoints(entry);
-    if (edgePoints) {
-      const leftDist = Math.max(0, (entry.painting.offset ?? 0) - width * 0.5);
-      const span = (entry.painting.wall === "north" || entry.painting.wall === "south") ? room.width : room.depth;
-      const rightDist = Math.max(0, span - ((entry.painting.offset ?? 0) + width * 0.5));
+    const customWall = findCustomWallForEntry(entry);
+    const room = entry.room ?? getRoomsById().get(entry.painting.roomId ?? "");
+    let span = 0;
+    let along = 0;
+    if (customWall) {
+      const x1 = Number(customWall.x1 ?? 0);
+      const z1 = Number(customWall.z1 ?? 0);
+      const x2 = Number(customWall.x2 ?? 0);
+      const z2 = Number(customWall.z2 ?? 0);
+      span = Math.hypot(x2 - x1, z2 - z1);
+      along = THREE_NS.MathUtils.clamp(Number(entry.painting.customWallOffset ?? entry.painting.offset ?? 0), 0, span);
+    } else if (room) {
+      span = (entry.painting.wall === "north" || entry.painting.wall === "south") ? room.width : room.depth;
+      along = THREE_NS.MathUtils.clamp(Number(entry.painting.offset ?? 0), 0, span);
+    }
+    if (edgePoints && span > 0) {
+      const leftDist = Math.max(0, along - width * 0.5);
+      const rightDist = Math.max(0, span - (along + width * 0.5));
       lines.push({ a: edgePoints.min, b: leftCenter, label: formatMeters(leftDist) });
       lines.push({ a: rightCenter, b: edgePoints.max, label: formatMeters(rightDist) });
     }
@@ -162,7 +190,7 @@ export function createDragMeasureOverlay({ app, overlaySvg }: DragMeasureOverlay
       return;
     }
     const entry = paintingRegistry.get(dragPainting.paintingId);
-    if (!entry || !entry.room) {
+    if (!entry) {
       clear();
       return;
     }

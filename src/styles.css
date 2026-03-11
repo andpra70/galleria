@@ -921,8 +921,6 @@ body,
 #art-edit-wall,
 #art-edit-offset-cm,
 #art-edit-center-y-cm,
-#art-edit-frame-color,
-#art-edit-frame-border-cm,
 #art-edit-image-url,
 label[for="art-edit-room"],
 label[for="art-edit-room-width-cm"],
@@ -931,8 +929,6 @@ label[for="art-edit-room-height-cm"],
 label[for="art-edit-wall"],
 label[for="art-edit-offset-cm"],
 label[for="art-edit-center-y-cm"],
-label[for="art-edit-frame-color"],
-label[for="art-edit-frame-border-cm"],
 label[for="art-edit-image-url"] {
   display: none;
 }

@@ -124,9 +124,10 @@ export function createPaintingEditorInlineHandler(deps: PaintingEditorInlineDeps
       return;
     }
 
+    const hasCustomWall = Boolean((painting.customWallId ?? "").trim());
     const nextRoomId = (artEditRoom.value || "").trim();
     const nextRoom: GalleryRoom | null = roomsById.get(nextRoomId) ?? entry?.room ?? roomsById.get(painting.roomId ?? "") ?? null;
-    if (!nextRoom) {
+    if (!nextRoom && !hasCustomWall) {
       return;
     }
     if (event.target === artEditRoom && nextRoom) {
@@ -156,21 +157,27 @@ export function createPaintingEditorInlineHandler(deps: PaintingEditorInlineDeps
     painting.id = nextId;
     painting.title = artEditTitle.value?.trim() || "Opera";
     painting.description = artEditDescription.value?.trim() || "";
-    painting.roomId = nextRoom.id;
+    if (nextRoom) {
+      painting.roomId = nextRoom.id;
+    }
     const nextWallSide = nextWall as WallSide;
     painting.wall = nextWallSide;
     if (entry) {
-      entry.room = nextRoom;
+      entry.room = nextRoom ?? undefined;
     }
     const fallbackOffset = mToCm(painting.offset ?? 0);
     const desiredOffset = cmToM(parseNumberOrFallback(artEditOffsetCm.value, fallbackOffset));
     if (entry) {
       painting.offset = clampPaintingOffset(entry, snapToStep(desiredOffset, PAINTING_SNAP_M));
     } else {
-      const wallSpan = getWallSpan(nextRoom, nextWallSide);
-      const halfWidth = cmToM(Math.max(1, parseNumberOrFallback(artEditWidthCm.value, painting.widthCm ?? 100))) * 0.5;
-      const margin = Math.max(0.5, halfWidth + 0.12);
-      painting.offset = snapToStep(THREE.MathUtils.clamp(desiredOffset, margin, wallSpan - margin), PAINTING_SNAP_M);
+      if (nextRoom) {
+        const wallSpan = getWallSpan(nextRoom, nextWallSide);
+        const halfWidth = cmToM(Math.max(1, parseNumberOrFallback(artEditWidthCm.value, painting.widthCm ?? 100))) * 0.5;
+        const margin = Math.max(0.5, halfWidth + 0.12);
+        painting.offset = snapToStep(THREE.MathUtils.clamp(desiredOffset, margin, wallSpan - margin), PAINTING_SNAP_M);
+      } else {
+        painting.offset = snapToStep(Math.max(0, desiredOffset), PAINTING_SNAP_M);
+      }
     }
     const fallbackCenter = mToCm(painting.centerY ?? 1.65);
     const desiredCenter = cmToM(parseNumberOrFallback(artEditCenterYCm.value, fallbackCenter));
@@ -178,8 +185,9 @@ export function createPaintingEditorInlineHandler(deps: PaintingEditorInlineDeps
       painting.centerY = clampPaintingCenterY(entry, snapToStep(desiredCenter, PAINTING_SNAP_M));
     } else {
       const halfHeight = cmToM(Math.max(1, painting.heightCm ?? 75)) * 0.5 + 0.1;
+      const maxHeight = nextRoom ? nextRoom.height : 3;
       painting.centerY = snapToStep(
-        THREE.MathUtils.clamp(desiredCenter, Math.max(0.2, halfHeight), nextRoom.height - Math.max(0.2, halfHeight)),
+        THREE.MathUtils.clamp(desiredCenter, Math.max(0.2, halfHeight), Math.max(Math.max(0.2, halfHeight), maxHeight - Math.max(0.2, halfHeight))),
         PAINTING_SNAP_M
       );
     }
@@ -197,13 +205,16 @@ export function createPaintingEditorInlineHandler(deps: PaintingEditorInlineDeps
       painting.image = nextImageUrl;
     }
 
-    const roomWidthCm = parseNumberOrFallback(artEditRoomWidthCm.value, nextRoom.widthCm ?? mToCm(nextRoom.width));
-    const roomDepthCm = parseNumberOrFallback(artEditRoomDepthCm.value, nextRoom.depthCm ?? mToCm(nextRoom.depth));
-    const roomHeightCm = parseNumberOrFallback(artEditRoomHeightCm.value, nextRoom.heightCm ?? mToCm(nextRoom.height));
-    const roomChanged = roomWidthCm !== nextRoom.widthCm || roomDepthCm !== nextRoom.depthCm || roomHeightCm !== nextRoom.heightCm;
-    nextRoom.widthCm = Math.max(100, roomWidthCm);
-    nextRoom.depthCm = Math.max(100, roomDepthCm);
-    nextRoom.heightCm = Math.max(180, roomHeightCm);
+    let roomChanged = false;
+    if (nextRoom) {
+      const roomWidthCm = parseNumberOrFallback(artEditRoomWidthCm.value, nextRoom.widthCm ?? mToCm(nextRoom.width));
+      const roomDepthCm = parseNumberOrFallback(artEditRoomDepthCm.value, nextRoom.depthCm ?? mToCm(nextRoom.depth));
+      const roomHeightCm = parseNumberOrFallback(artEditRoomHeightCm.value, nextRoom.heightCm ?? mToCm(nextRoom.height));
+      roomChanged = roomWidthCm !== nextRoom.widthCm || roomDepthCm !== nextRoom.depthCm || roomHeightCm !== nextRoom.heightCm;
+      nextRoom.widthCm = Math.max(100, roomWidthCm);
+      nextRoom.depthCm = Math.max(100, roomDepthCm);
+      nextRoom.heightCm = Math.max(180, roomHeightCm);
+    }
 
     if (entry) {
       entry.paintingSpot.id = nextId;

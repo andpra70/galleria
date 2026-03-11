@@ -1068,9 +1068,20 @@ function attachArtEditTabs() {
 
 function updateEditModeVisuals() {
   const currentRoomId = uiState.editMode ? getCurrentVisitorRoomId() : null;
+  const isPointInsideRoom = (roomId: string, x: number, z: number) => {
+    const room = config.rooms.find((candidate) => candidate.id === roomId);
+    if (!room) {
+      return false;
+    }
+    return x >= room.x && x <= room.x + room.width && z >= room.z && z <= room.z + room.depth;
+  };
   paintingRegistry.forEach((entry) => {
     const entryRoomId = entry.painting.roomId ?? entry.room?.id ?? "";
-    const handlesVisible = Boolean(currentRoomId) && entryRoomId === currentRoomId;
+    const onCustomWall = Boolean((entry.painting.customWallId ?? "").trim());
+    const handlesVisible = Boolean(currentRoomId) && (
+      entryRoomId === currentRoomId ||
+      (onCustomWall && isPointInsideRoom(currentRoomId, Number(entry.paintingSpot.center.x), Number(entry.paintingSpot.center.z)))
+    );
     if (entry.deleteHandle) {
       entry.deleteHandle.visible = handlesVisible;
     }
