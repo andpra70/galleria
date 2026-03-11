@@ -34,7 +34,7 @@
       "transparent": true
     },
     "defaultPaintingHeight": 1,
-    "cameraFov": 120
+    "cameraFov": 80
   },
   "rooms": [
     {

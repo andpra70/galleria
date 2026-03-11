@@ -117,6 +117,18 @@ export interface GallerySpotLightConfig {
 }
 
 export interface VisitorConfig {
+  pathTour?: {
+    keyframes?: Array<{
+      x?: number;
+      z?: number;
+      xCm?: number;
+      zCm?: number;
+    }>;
+    walkSeconds?: number;
+    stopOnPaintingSeconds?: number;
+    openPaintingCard?: boolean;
+    cardSeconds?: number;
+  };
   eyeHeight?: number;
   moveSpeed?: number;
   wallClearance?: number;

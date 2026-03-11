@@ -169,6 +169,14 @@ const configMapLightIntensity = mustEl<HTMLInputElement>("config-map-light-inten
 const configMapLightAngleDeg = mustEl<HTMLInputElement>("config-map-light-angle-deg");
 const configMapLightDistanceM = mustEl<HTMLInputElement>("config-map-light-distance-m");
 const configMapLightPenumbra = mustEl<HTMLInputElement>("config-map-light-penumbra");
+const configMapPathWalkSeconds = mustEl<HTMLInputElement>("config-map-path-walk-seconds");
+const configMapPathStopSeconds = mustEl<HTMLInputElement>("config-map-path-stop-seconds");
+const configMapPathOpenCard = mustEl<HTMLInputElement>("config-map-path-open-card");
+const configMapPathCardSeconds = mustEl<HTMLInputElement>("config-map-path-card-seconds");
+const configMapPathAddPointBtn = mustEl<HTMLButtonElement>("config-map-path-add-point");
+const configMapPathDeletePointBtn = mustEl<HTMLButtonElement>("config-map-path-delete-point");
+const configMapPathClearBtn = mustEl<HTMLButtonElement>("config-map-path-clear");
+const configMapPathStatus = mustEl<HTMLElement>("config-map-path-status");
 const configGalleryMapEditor = mustEl<SVGSVGElement>("config-gallery-map-editor");
 const configGalleryMapSubTabButtons = Array.from(
   document.querySelectorAll<HTMLButtonElement>('[data-config-tab-panel="gallery-map"] [data-gallery-map-subtab]')
@@ -220,7 +228,7 @@ const GALLERY_MAP_ZOOM_MIN = 0.35;
 const GALLERY_MAP_ZOOM_MAX = 7;
 const GALLERY_OPENING_MIN_WIDTH_M = 0.2;
 
-type GalleryMapTool = "room" | "wall" | "opening" | "delete-opening" | "delete-wall" | "light" | "delete-light";
+type GalleryMapTool = "room" | "wall" | "opening" | "delete-opening" | "delete-wall" | "light" | "delete-light" | "path";
 type GalleryMapDragAction =
   | "none"
   | "createRoom"
@@ -235,7 +243,8 @@ type GalleryMapDragAction =
   | "resizeOpeningStart"
   | "resizeOpeningEnd"
   | "moveCameraStart"
-  | "moveCameraTarget";
+  | "moveCameraTarget"
+  | "movePathPoint";
 type PlanPoint = { x: number; z: number };
 type PlanAssistMode = "room-create" | "room-move" | "wall-create" | "opening" | "generic";
 type RoomCorner = "nw" | "ne" | "sw" | "se";
@@ -273,6 +282,12 @@ type GalleryMapLightMoveState = {
 };
 type GalleryMapLightTargetMoveState = {
   lightId: string;
+  startPointer: PlanPoint;
+  startX: number;
+  startZ: number;
+};
+type GalleryMapPathPointMoveState = {
+  pointIndex: number;
   startPointer: PlanPoint;
   startX: number;
   startZ: number;
@@ -399,6 +414,19 @@ let configLeafletMap: L.Map | null = null;
 let configLeafletMarker: L.Marker | null = null;
 let whenCalendarViewMonth = new Date();
 let lastGalleryMapObserverSignature = "";
+const pathPlaybackState: {
+  active: boolean;
+  nextIndex: number;
+  waitingUntilMs: number;
+  lastMoveIssuedAtMs: number;
+  baseSpeedScale: number;
+} = {
+  active: false,
+  nextIndex: 0,
+  waitingUntilMs: 0,
+  lastMoveIssuedAtMs: 0,
+  baseSpeedScale: 1.35,
+};
 const galleryMapEditorState: {
   tool: GalleryMapTool;
   dragAction: GalleryMapDragAction;
@@ -408,12 +436,14 @@ const galleryMapEditorState: {
   selectedCustomWallIndex: number | null;
   selectedOpening: GalleryMapOpeningRef | null;
   selectedLightId: string | null;
+  selectedPathPointIndex: number | null;
   movingRoom: GalleryMapRoomMoveState | null;
   resizingRoom: GalleryMapRoomResizeState | null;
   resizingWall: GalleryMapWallResizeState | null;
   movingPainting: GalleryMapPaintingMoveState | null;
   movingLight: GalleryMapLightMoveState | null;
   movingLightTarget: GalleryMapLightTargetMoveState | null;
+  movingPathPoint: GalleryMapPathPointMoveState | null;
   resizingOpening: GalleryMapOpeningResizeState | null;
   panning: GalleryMapPanState | null;
   viewZoom: number;
@@ -432,12 +462,14 @@ const galleryMapEditorState: {
   selectedCustomWallIndex: null,
   selectedOpening: null,
   selectedLightId: null,
+  selectedPathPointIndex: null,
   movingRoom: null,
   resizingRoom: null,
   resizingWall: null,
   movingPainting: null,
   movingLight: null,
   movingLightTarget: null,
+  movingPathPoint: null,
   resizingOpening: null,
   panning: null,
   viewZoom: 1,
@@ -647,6 +679,7 @@ const { onResize, animate } = createRuntimeLoop({
   updateFocusOrientation,
   updateCamera,
   afterCameraUpdate: () => {
+    updatePathPlayback();
     updateEditModeVisuals();
     dragMeasureOverlay.update();
     refreshGalleryMapObserverIfNeeded();
@@ -1253,6 +1286,7 @@ function setSelectedGalleryMapRoom(roomId: string | null) {
     galleryMapEditorState.selectedRoomId = roomId;
   }
   galleryMapEditorState.selectedCustomWallIndex = null;
+  galleryMapEditorState.selectedPathPointIndex = null;
   setSelectedGalleryMapOpening(null);
   if (configMapDeleteRoomBtn) {
     configMapDeleteRoomBtn.disabled = !galleryMapEditorState.selectedRoomId;
@@ -1267,6 +1301,7 @@ function setSelectedGalleryMapCustomWall(wallIndex: number | null) {
   }
   galleryMapEditorState.selectedCustomWallIndex = wallIndex;
   galleryMapEditorState.selectedRoomId = null;
+  galleryMapEditorState.selectedPathPointIndex = null;
   setSelectedGalleryMapOpening(null);
   if (configMapDeleteRoomBtn) {
     configMapDeleteRoomBtn.disabled = !galleryMapEditorState.selectedRoomId;
@@ -1279,6 +1314,7 @@ function setSelectedGalleryMapOpening(openingRef: GalleryMapOpeningRef | null) {
     syncSelectedOpeningControls();
     return;
   }
+  galleryMapEditorState.selectedPathPointIndex = null;
   galleryMapEditorState.selectedOpening = openingRef;
   syncSelectedOpeningControls();
 }
@@ -1299,6 +1335,7 @@ function setSelectedGalleryMapLight(lightId: string | null) {
     galleryMapEditorState.selectedLightId = lightId;
     galleryMapEditorState.selectedRoomId = null;
     galleryMapEditorState.selectedCustomWallIndex = null;
+    galleryMapEditorState.selectedPathPointIndex = null;
   }
   setSelectedGalleryMapOpening(null);
   if (configMapDeleteRoomBtn) {
@@ -1737,6 +1774,115 @@ function moveVisitorToPlanPointFromMap(rawPoint: PlanPoint) {
   return true;
 }
 
+function findNearestPaintingEntryToPoint(point: PlanPoint, toleranceM = 1.8) {
+  let best: { id: string; distance: number } | null = null;
+  paintingRegistry.forEach((entry, id) => {
+    const dx = Number(entry.paintingSpot.center.x) - point.x;
+    const dz = Number(entry.paintingSpot.center.z) - point.z;
+    const distance = Math.hypot(dx, dz);
+    if (distance > toleranceM) {
+      return;
+    }
+    if (!best || distance < best.distance) {
+      best = { id, distance };
+    }
+  });
+  return best ? paintingRegistry.get(best.id) ?? null : null;
+}
+
+function stopPathPlayback() {
+  if (!pathPlaybackState.active) {
+    return;
+  }
+  pathPlaybackState.active = false;
+  pathPlaybackState.nextIndex = 0;
+  pathPlaybackState.waitingUntilMs = 0;
+  pathPlaybackState.lastMoveIssuedAtMs = 0;
+  movement.speedScale = pathPlaybackState.baseSpeedScale;
+}
+
+function moveToPathIndex(index: number) {
+  const points = getPathTourKeyframes();
+  if (index < 0 || index >= points.length) {
+    stopPathPlayback();
+    return;
+  }
+  const tour = ensureVisitorPathTourConfig();
+  const walkSeconds = clampNumber(Number.isFinite(Number(tour.walkSeconds)) ? Number(tour.walkSeconds) : 4, 0.2, 60);
+  const point = points[index];
+  const target = new THREE.Vector3(point.x, visitor.eyeHeight, point.z);
+  const clamped = movementActions.clampToWalkable(target);
+  if (!clamped) {
+    pathPlaybackState.nextIndex = index + 1;
+    moveToPathIndex(pathPlaybackState.nextIndex);
+    return;
+  }
+  const segmentDistance = Math.max(0.01, visitor.position.distanceTo(clamped));
+  movement.speedScale = clampNumber(segmentDistance / walkSeconds / Math.max(0.01, visitor.moveSpeed), 0.2, 6);
+  movementActions.moveVisitorTo(clamped, null);
+  pathPlaybackState.lastMoveIssuedAtMs = performance.now();
+}
+
+function startPathPlayback() {
+  const points = getPathTourKeyframes();
+  if (!points.length) {
+    return;
+  }
+  stopPathPlayback();
+  pathPlaybackState.baseSpeedScale = movement.speedScale;
+  pathPlaybackState.active = true;
+  pathPlaybackState.nextIndex = 0;
+  pathPlaybackState.waitingUntilMs = 0;
+  pathPlaybackState.lastMoveIssuedAtMs = 0;
+  closePaintingCard();
+  moveToPathIndex(0);
+}
+
+function updatePathPlayback() {
+  if (!pathPlaybackState.active) {
+    return;
+  }
+  const nowMs = performance.now();
+  if (pathPlaybackState.waitingUntilMs > 0) {
+    if (nowMs < pathPlaybackState.waitingUntilMs) {
+      return;
+    }
+    pathPlaybackState.waitingUntilMs = 0;
+    pathPlaybackState.nextIndex += 1;
+    moveToPathIndex(pathPlaybackState.nextIndex);
+    return;
+  }
+  if (movement.route.length || movement.destination) {
+    return;
+  }
+  const points = getPathTourKeyframes();
+  if (pathPlaybackState.nextIndex < 0 || pathPlaybackState.nextIndex >= points.length) {
+    stopPathPlayback();
+    return;
+  }
+  const point = points[pathPlaybackState.nextIndex];
+  const entry = findNearestPaintingEntryToPoint(point);
+  const tour = ensureVisitorPathTourConfig();
+  const stopSeconds = clampNumber(Number.isFinite(Number(tour.stopOnPaintingSeconds)) ? Number(tour.stopOnPaintingSeconds) : 1.5, 0, 60);
+  const cardSeconds = clampNumber(Number.isFinite(Number(tour.cardSeconds)) ? Number(tour.cardSeconds) : 2.5, 0, 60);
+  const shouldOpenCard = tour.openPaintingCard !== false;
+  let waitSeconds = 0;
+  if (entry) {
+    movement.focusTarget = entry.paintingSpot.center.clone();
+    waitSeconds = stopSeconds;
+    if (shouldOpenCard && cardSeconds > 0) {
+      openPaintingCard(entry.paintingSpot);
+      waitSeconds = Math.max(waitSeconds, cardSeconds);
+    }
+  }
+  if (waitSeconds > 0) {
+    pathPlaybackState.waitingUntilMs = nowMs + waitSeconds * 1000;
+    return;
+  }
+  pathPlaybackState.nextIndex += 1;
+  moveToPathIndex(pathPlaybackState.nextIndex);
+}
+
 function getGalleryLightTargetPlanPoint(light: GallerySpotLightConfig) {
   const preview = getMovingLightTargetPreview(light);
   if (preview) {
@@ -2157,6 +2303,9 @@ function getGalleryPlanBounds() {
     if (target) {
       include(target.x, target.z);
     }
+  });
+  getPathTourKeyframes().forEach((point) => {
+    include(point.x, point.z);
   });
   config.paintings
     .filter((painting) => painting.placed !== false)
@@ -2897,13 +3046,15 @@ function renderGalleryMapEditor() {
   const draggingPaintingMarker = galleryMapEditorState.dragAction === "movePaintingOnMap";
   const draggingLightHandle =
     galleryMapEditorState.dragAction === "moveLight" || galleryMapEditorState.dragAction === "moveLightTarget";
+  const draggingPathPoint = galleryMapEditorState.dragAction === "movePathPoint";
   configGalleryMapEditor.style.cursor =
     galleryMapEditorState.panning ||
     draggingCameraHandle ||
     draggingOpeningHandle ||
     draggingWallHandle ||
     draggingPaintingMarker ||
-    draggingLightHandle
+    draggingLightHandle ||
+    draggingPathPoint
       ? "grabbing"
       : "crosshair";
   const walls = ensureCustomWallsArray();
@@ -3185,6 +3336,36 @@ function renderGalleryMapEditor() {
     })
     .join("");
 
+  const pathPoints = getPathTourKeyframes();
+  const pathPolylineSvg = pathPoints.length >= 2
+    ? `<polyline points="${pathPoints
+        .map((point) => {
+          const p = toScreen(point);
+          return `${p.x.toFixed(1)},${p.y.toFixed(1)}`;
+        })
+        .join(" ")}" fill="none" stroke="rgba(79,70,229,0.92)" stroke-width="2.2" stroke-dasharray="7 5" />`
+    : "";
+  const pathPointsSvg = pathPoints
+    .map((point, index) => {
+      const preview =
+        galleryMapEditorState.dragAction === "movePathPoint" && galleryMapEditorState.movingPathPoint?.pointIndex === index
+          ? galleryMapEditorState.dragCurrent
+          : null;
+      const drawPoint = preview ?? point;
+      const p = toScreen(drawPoint);
+      const selected = galleryMapEditorState.selectedPathPointIndex === index;
+      const moving = galleryMapEditorState.dragAction === "movePathPoint" && galleryMapEditorState.movingPathPoint?.pointIndex === index;
+      return `
+        <g data-path-point-index="${index}">
+          <circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="${moving ? 7.4 : selected ? 6.6 : 5.2}" fill="${
+            selected ? "#4f46e5" : "#a5b4fc"
+          }" stroke="${selected ? "#312e81" : "#3730a3"}" stroke-width="${moving ? 2.5 : 1.9}" />
+          <text x="${(p.x + 7).toFixed(1)}" y="${(p.y - 6).toFixed(1)}" font-size="10.6" fill="#312e81">P${index + 1}</text>
+        </g>
+      `;
+    })
+    .join("");
+
   const observerPoint = toScreen({ x: visitor.position.x, z: visitor.position.z });
   const observerDirPoint = toScreen({
     x: visitor.position.x + Math.sin(movement.yaw) * 1.25,
@@ -3241,6 +3422,8 @@ function renderGalleryMapEditor() {
     ${paintingMarkersSvg}
     ${galleryLightLinks}
     ${galleryLightsSvg}
+    ${pathPolylineSvg}
+    ${pathPointsSvg}
     ${observerSvg}
     ${cameraDragSvg}
     ${preview}
@@ -3705,6 +3888,9 @@ function deleteSelectedPaintingFromMap() {
 }
 
 function deleteSelectedElementFromGalleryMap() {
+  if (deleteSelectedPathPoint()) {
+    return true;
+  }
   if (deleteSelectedGalleryOpening()) {
     return true;
   }
@@ -3740,6 +3926,9 @@ function setActiveGalleryMapTool(tool: GalleryMapTool) {
   if (tool !== "wall") {
     galleryMapEditorState.selectedCustomWallIndex = null;
     galleryMapEditorState.resizingWall = null;
+  }
+  if (tool !== "path") {
+    galleryMapEditorState.movingPathPoint = null;
   }
   configMapToolButtons.forEach((button) => {
     const active = button.dataset.mapTool === tool;
@@ -4010,6 +4199,39 @@ function attachGalleryMapEditor() {
       focusPaintingFromGalleryMap(markerPaintingId);
       return;
     }
+    const pathPointTarget = (event.target as Element | null)?.closest<SVGElement>("[data-path-point-index]");
+    const pathPointIndexRaw = Number(pathPointTarget?.getAttribute("data-path-point-index"));
+    if (Number.isInteger(pathPointIndexRaw) && pathPointIndexRaw >= 0) {
+      setActiveGalleryMapSubTab("path");
+      setSelectedGalleryPathPoint(pathPointIndexRaw);
+      if (galleryMapEditorState.tool === "path") {
+        const points = getPathTourKeyframes();
+        const selectedPoint = points[pathPointIndexRaw];
+        if (selectedPoint) {
+          const rawPoint = getPlanPointFromEditorEvent(event);
+          galleryMapEditorState.dragAction = "movePathPoint";
+          galleryMapEditorState.movingPathPoint = {
+            pointIndex: pathPointIndexRaw,
+            startPointer: rawPoint,
+            startX: selectedPoint.x,
+            startZ: selectedPoint.z,
+          };
+          galleryMapEditorState.movingLight = null;
+          galleryMapEditorState.movingLightTarget = null;
+          galleryMapEditorState.movingRoom = null;
+          galleryMapEditorState.resizingOpening = null;
+          galleryMapEditorState.resizingRoom = null;
+          galleryMapEditorState.resizingWall = null;
+          galleryMapEditorState.movingPainting = null;
+          galleryMapEditorState.dragStart = rawPoint;
+          galleryMapEditorState.dragCurrent = rawPoint;
+          galleryMapEditorState.panning = null;
+          configGalleryMapEditor.setPointerCapture(event.pointerId);
+        }
+      }
+      renderGalleryMapEditor();
+      return;
+    }
     const cameraHandleTarget = (event.target as Element | null)?.closest<SVGElement>("[data-camera-handle]");
     const cameraHandle = cameraHandleTarget?.getAttribute("data-camera-handle");
     if (cameraHandle === "start" || cameraHandle === "target") {
@@ -4110,6 +4332,7 @@ function attachGalleryMapEditor() {
     const customWallLineIndexRaw = Number(customWallTarget?.getAttribute("data-custom-wall-index"));
     if (
       galleryMapEditorState.tool !== "light" &&
+      galleryMapEditorState.tool !== "path" &&
       Number.isInteger(customWallLineIndexRaw) &&
       customWallLineIndexRaw >= 0 &&
       !Number.isNaN(customWallLineIndexRaw)
@@ -4157,6 +4380,10 @@ function attachGalleryMapEditor() {
         return;
       }
       addGalleryLightAtPoint(applyPlanPointAssist(rawPoint, "generic"));
+      return;
+    }
+    if (galleryMapEditorState.tool === "path") {
+      addPathPoint(applyPlanPointAssist(rawPoint, "generic"));
       return;
     }
     if (galleryMapEditorState.tool === "delete-light") {
@@ -4319,6 +4546,8 @@ function attachGalleryMapEditor() {
       applyCameraPointFromMapDrag(rawEnd, "start");
     } else if (galleryMapEditorState.dragAction === "moveCameraTarget") {
       applyCameraPointFromMapDrag(rawEnd, "target");
+    } else if (galleryMapEditorState.dragAction === "movePathPoint") {
+      applyPathPointMoveFromDrag(rawEnd);
     }
     if (configGalleryMapEditor.hasPointerCapture(event.pointerId)) {
       configGalleryMapEditor.releasePointerCapture(event.pointerId);
@@ -4332,6 +4561,7 @@ function attachGalleryMapEditor() {
     galleryMapEditorState.movingPainting = null;
     galleryMapEditorState.movingLight = null;
     galleryMapEditorState.movingLightTarget = null;
+    galleryMapEditorState.movingPathPoint = null;
     galleryMapEditorState.resizingOpening = null;
     galleryMapEditorState.panning = null;
     renderGalleryMapEditor();
@@ -4372,6 +4602,22 @@ function attachGalleryMapEditor() {
   };
 
   const onWindowKeyDown = (event: KeyboardEvent) => {
+    if ((event.key === "p" || event.key === "P") && !event.repeat) {
+      if (isEditingTextInput(event.target)) {
+        return;
+      }
+      if (pathPlaybackState.active) {
+        stopPathPlayback();
+      } else {
+        startPathPlayback();
+      }
+      event.preventDefault();
+      return;
+    }
+    if (event.key === "Escape" && pathPlaybackState.active) {
+      stopPathPlayback();
+      return;
+    }
     if (event.key !== "Delete" && event.key !== "Backspace") {
       return;
     }
@@ -4407,6 +4653,7 @@ function attachGalleryMapEditor() {
     galleryMapEditorState.movingPainting = null;
     galleryMapEditorState.movingLight = null;
     galleryMapEditorState.movingLightTarget = null;
+    galleryMapEditorState.movingPathPoint = null;
     galleryMapEditorState.resizingOpening = null;
     galleryMapEditorState.panning = null;
     renderGalleryMapEditor();
@@ -4425,6 +4672,115 @@ function ensureExhibitionConfig() {
 function ensureVisitorConfig() {
   config.visitor = config.visitor ?? {};
   return config.visitor;
+}
+
+function ensureVisitorPathTourConfig() {
+  const visitorCfg = ensureVisitorConfig();
+  visitorCfg.pathTour = visitorCfg.pathTour ?? {};
+  visitorCfg.pathTour.keyframes = Array.isArray(visitorCfg.pathTour.keyframes) ? visitorCfg.pathTour.keyframes : [];
+  return visitorCfg.pathTour;
+}
+
+function getPathTourKeyframes(): PlanPoint[] {
+  const tour = ensureVisitorPathTourConfig();
+  const raw = Array.isArray(tour.keyframes) ? tour.keyframes : [];
+  return raw
+    .map((point) => {
+      const xRaw = Number(point.x);
+      const zRaw = Number(point.z);
+      const xCmRaw = Number(point.xCm);
+      const zCmRaw = Number(point.zCm);
+      const x = Number.isFinite(xRaw) ? xRaw : Number.isFinite(xCmRaw) ? xCmRaw / CM_PER_M : Number.NaN;
+      const z = Number.isFinite(zRaw) ? zRaw : Number.isFinite(zCmRaw) ? zCmRaw / CM_PER_M : Number.NaN;
+      return Number.isFinite(x) && Number.isFinite(z) ? { x, z } : null;
+    })
+    .filter((point): point is PlanPoint => point != null);
+}
+
+function writePathTourKeyframes(points: PlanPoint[]) {
+  const tour = ensureVisitorPathTourConfig();
+  tour.keyframes = points.map((point) => ({
+    x: roundConfigNumber(point.x),
+    z: roundConfigNumber(point.z),
+    xCm: Math.round(point.x * CM_PER_M),
+    zCm: Math.round(point.z * CM_PER_M),
+  }));
+}
+
+function setSelectedGalleryPathPoint(index: number | null) {
+  galleryMapEditorState.selectedRoomId = null;
+  galleryMapEditorState.selectedCustomWallIndex = null;
+  galleryMapEditorState.selectedLightId = null;
+  setSelectedGalleryMapOpening(null);
+  const keyframes = getPathTourKeyframes();
+  if (!Number.isInteger(index) || index == null || index < 0 || index >= keyframes.length) {
+    galleryMapEditorState.selectedPathPointIndex = null;
+  } else {
+    galleryMapEditorState.selectedPathPointIndex = index;
+  }
+  syncPathTourInspectorControls();
+}
+
+function syncPathTourInspectorControls() {
+  const tour = ensureVisitorPathTourConfig();
+  const walkSecondsRaw = Number(tour.walkSeconds);
+  const stopSecondsRaw = Number(tour.stopOnPaintingSeconds);
+  const cardSecondsRaw = Number(tour.cardSeconds);
+  const walkSeconds = Number.isFinite(walkSecondsRaw) ? clampNumber(walkSecondsRaw, 0.2, 60) : 4;
+  const stopSeconds = Number.isFinite(stopSecondsRaw) ? clampNumber(stopSecondsRaw, 0, 60) : 1.5;
+  const cardSeconds = Number.isFinite(cardSecondsRaw) ? clampNumber(cardSecondsRaw, 0, 60) : 2.5;
+  tour.walkSeconds = walkSeconds;
+  tour.stopOnPaintingSeconds = stopSeconds;
+  tour.cardSeconds = cardSeconds;
+  tour.openPaintingCard = tour.openPaintingCard !== false;
+  configMapPathWalkSeconds.value = walkSeconds.toFixed(1).replace(/\.0$/, "");
+  configMapPathStopSeconds.value = stopSeconds.toFixed(1).replace(/\.0$/, "");
+  configMapPathCardSeconds.value = cardSeconds.toFixed(1).replace(/\.0$/, "");
+  configMapPathOpenCard.checked = tour.openPaintingCard;
+  const points = getPathTourKeyframes();
+  const selected = galleryMapEditorState.selectedPathPointIndex;
+  configMapPathDeletePointBtn.disabled = !(selected != null && selected >= 0 && selected < points.length);
+  const selectedLabel = selected != null && selected >= 0 && selected < points.length ? `Selezionato: #${selected + 1}` : "Selezionato: nessuno";
+  configMapPathStatus.textContent = `${points.length} keyframe • ${selectedLabel}`;
+}
+
+function applyPathPointMoveFromDrag(end: PlanPoint) {
+  const moving = galleryMapEditorState.movingPathPoint;
+  if (!moving) {
+    return;
+  }
+  const points = getPathTourKeyframes();
+  if (moving.pointIndex < 0 || moving.pointIndex >= points.length) {
+    return;
+  }
+  const deltaX = end.x - moving.startPointer.x;
+  const deltaZ = end.z - moving.startPointer.z;
+  const assisted = applyPlanPointAssist({ x: moving.startX + deltaX, z: moving.startZ + deltaZ }, "generic");
+  points[moving.pointIndex] = assisted;
+  writePathTourKeyframes(points);
+  setSelectedGalleryPathPoint(moving.pointIndex);
+  renderGalleryMapEditor();
+}
+
+function addPathPoint(point: PlanPoint) {
+  const points = getPathTourKeyframes();
+  points.push(point);
+  writePathTourKeyframes(points);
+  setSelectedGalleryPathPoint(points.length - 1);
+  renderGalleryMapEditor();
+}
+
+function deleteSelectedPathPoint() {
+  const selected = galleryMapEditorState.selectedPathPointIndex;
+  const points = getPathTourKeyframes();
+  if (selected == null || selected < 0 || selected >= points.length) {
+    return false;
+  }
+  points.splice(selected, 1);
+  writePathTourKeyframes(points);
+  setSelectedGalleryPathPoint(points.length ? Math.max(0, Math.min(selected, points.length - 1)) : null);
+  renderGalleryMapEditor();
+  return true;
 }
 
 function ensureVisitorStartConfig() {
@@ -4924,6 +5280,12 @@ function setActiveGalleryMapSubTab(tabId: string) {
       setActiveGalleryMapTool("light");
     }
   }
+  if (normalizedTab === "path") {
+    syncPathTourInspectorControls();
+    if (galleryMapEditorState.tool !== "path") {
+      setActiveGalleryMapTool("path");
+    }
+  }
   if (normalizedTab === "room" && galleryMapEditorState.tool !== "room") {
     setActiveGalleryMapTool("room");
   } else if (normalizedTab === "wall" && galleryMapEditorState.tool !== "wall") {
@@ -4932,6 +5294,9 @@ function setActiveGalleryMapSubTab(tabId: string) {
     setActiveGalleryMapTool("opening");
   }
   if (normalizedTab !== "lights" && galleryMapEditorState.tool === "light") {
+    setActiveGalleryMapTool("room");
+  }
+  if (normalizedTab !== "path" && galleryMapEditorState.tool === "path") {
     setActiveGalleryMapTool("room");
   }
   window.setTimeout(() => {
@@ -5026,6 +5391,7 @@ function syncConfigPanelFromConfig() {
   ensureWhenCalendarViewMonth();
   renderWhenCalendar();
   syncGalleryLightTargetOptions();
+  syncPathTourInspectorControls();
   setSelectedGalleryMapRoom(null);
   syncSelectedGalleryLightControls();
   renderGalleryMapEditor();
@@ -5215,6 +5581,29 @@ function attachConfigPanel() {
   configMapLightAngleDeg.addEventListener("change", onGalleryLightParamsChanged);
   configMapLightDistanceM.addEventListener("change", onGalleryLightParamsChanged);
   configMapLightPenumbra.addEventListener("change", onGalleryLightParamsChanged);
+  const onPathTourParamsChanged = () => {
+    const tour = ensureVisitorPathTourConfig();
+    tour.walkSeconds = clampNumber(Number(configMapPathWalkSeconds.value) || 4, 0.2, 60);
+    tour.stopOnPaintingSeconds = clampNumber(Number(configMapPathStopSeconds.value) || 0, 0, 60);
+    tour.openPaintingCard = configMapPathOpenCard.checked;
+    tour.cardSeconds = clampNumber(Number(configMapPathCardSeconds.value) || 0, 0, 60);
+    syncPathTourInspectorControls();
+  };
+  configMapPathWalkSeconds.addEventListener("change", onPathTourParamsChanged);
+  configMapPathStopSeconds.addEventListener("change", onPathTourParamsChanged);
+  configMapPathOpenCard.addEventListener("change", onPathTourParamsChanged);
+  configMapPathCardSeconds.addEventListener("change", onPathTourParamsChanged);
+  configMapPathAddPointBtn.addEventListener("click", () => {
+    addPathPoint({ x: visitor.position.x, z: visitor.position.z });
+  });
+  configMapPathDeletePointBtn.addEventListener("click", () => {
+    deleteSelectedPathPoint();
+  });
+  configMapPathClearBtn.addEventListener("click", () => {
+    writePathTourKeyframes([]);
+    setSelectedGalleryPathPoint(null);
+    renderGalleryMapEditor();
+  });
   setActiveGalleryMapSubTab("room");
   setActiveConfigTab("intro");
 }

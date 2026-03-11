@@ -138,6 +138,15 @@ export function renderConfigPanel() {
             >
               ✶ Luci
             </button>
+            <button
+              type="button"
+              class="config-map-subtab"
+              data-gallery-map-subtab="path"
+              aria-selected="false"
+              title="Definisci path camera"
+            >
+              ↝ Path
+            </button>
             <button type="button" class="config-map-toggle active" id="config-map-toggle-snap" aria-pressed="true" title="Snap a griglia 20cm">▦ Snap</button>
             <button type="button" class="config-map-toggle active" id="config-map-toggle-magnet" aria-pressed="true" title="Magnet a elementi vicini">⌖ Magnet</button>
             <button type="button" class="config-map-toggle" id="config-map-reset-view" title="Reset pan/zoom su mappa completa">↺ Vista</button>
@@ -299,6 +308,37 @@ export function renderConfigPanel() {
                   <span>Penumbra</span>
                   <input id="config-map-light-penumbra" type="number" step="0.05" min="0" max="1" value="0.22" />
                 </label>
+              </div>
+            </div>
+
+            <div class="config-gallery-map-subtab-panel" data-gallery-map-subtab-panel="path" role="tabpanel" hidden>
+              <div class="config-inline-fields">
+                <label class="config-field">
+                  <span>Tempo walk per tratto (s)</span>
+                  <input id="config-map-path-walk-seconds" type="number" min="0.2" step="0.1" value="4" />
+                </label>
+                <label class="config-field">
+                  <span>Sosta su opera (s)</span>
+                  <input id="config-map-path-stop-seconds" type="number" min="0" step="0.1" value="1.5" />
+                </label>
+              </div>
+              <div class="config-inline-fields">
+                <label class="config-field">
+                  <span>Apri scheda opera</span>
+                  <input id="config-map-path-open-card" type="checkbox" checked />
+                </label>
+                <label class="config-field">
+                  <span>Tempo scheda (s)</span>
+                  <input id="config-map-path-card-seconds" type="number" min="0" step="0.1" value="2.5" />
+                </label>
+              </div>
+              <div class="config-inline-fields">
+                <button id="config-map-path-add-point" type="button" title="Aggiungi keyframe su posizione osservatore">+ Keyframe</button>
+                <button id="config-map-path-delete-point" type="button" title="Rimuovi keyframe selezionato">− Keyframe</button>
+              </div>
+              <div class="config-inline-fields">
+                <button id="config-map-path-clear" type="button" title="Svuota tutto il path">Svuota path</button>
+                <span id="config-map-path-status" class="config-map-snap">Nessun keyframe</span>
               </div>
             </div>
           </div>
