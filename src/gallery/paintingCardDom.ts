@@ -3,6 +3,12 @@ import type { PaintingSpot } from "./types";
 
 export function renderPaintingCardContentDom(elements: ArtCardDomElements, paintingSpot: PaintingSpot) {
   const { artCardTitle, artCardDescription, artCardImage, artCardSynoptic } = elements;
+  const card = artCardImage.closest<HTMLElement>("#art-card");
+  if (card) {
+    const isVertical = Number(paintingSpot.height) > Number(paintingSpot.width);
+    card.classList.toggle("art-layout-vertical", isVertical);
+    card.classList.toggle("art-layout-horizontal", !isVertical);
+  }
 
   artCardTitle.textContent = paintingSpot.title ?? "Opera";
   artCardDescription.textContent = paintingSpot.description ?? "Descrizione non disponibile.";

@@ -1778,9 +1778,22 @@ function moveVisitorToPlanPointFromMap(rawPoint: PlanPoint) {
   return true;
 }
 
-function findNearestPaintingEntryToPoint(point: PlanPoint, toleranceM = Number.POSITIVE_INFINITY) {
+function resolveRoomIdAtPlanPoint(point: PlanPoint) {
+  for (let idx = config.rooms.length - 1; idx >= 0; idx -= 1) {
+    const room = config.rooms[idx];
+    if (point.x >= room.x && point.x <= room.x + room.width && point.z >= room.z && point.z <= room.z + room.depth) {
+      return room.id;
+    }
+  }
+  return null;
+}
+
+function findNearestPaintingEntryToPoint(point: PlanPoint, toleranceM = Number.POSITIVE_INFINITY, roomId: string | null = null) {
   let best: { id: string; distance: number } | null = null;
   paintingRegistry.forEach((entry, id) => {
+    if (roomId && (entry.painting.roomId ?? "") !== roomId) {
+      return;
+    }
     const dx = Number(entry.paintingSpot.center.x) - point.x;
     const dz = Number(entry.paintingSpot.center.z) - point.z;
     const distance = Math.hypot(dx, dz);
@@ -1794,13 +1807,16 @@ function findNearestPaintingEntryToPoint(point: PlanPoint, toleranceM = Number.P
   return best ? paintingRegistry.get(best.id) ?? null : null;
 }
 
-function findPaintingAssignedToKeyframe(points: PlanPoint[], keyframeIndex: number) {
+function findPaintingAssignedToKeyframe(points: PlanPoint[], keyframeIndex: number, roomId: string | null = null) {
   if (keyframeIndex < 0 || keyframeIndex >= points.length) {
     return null;
   }
   const targetPoint = points[keyframeIndex];
   let bestForThisKeyframe: { id: string; distance: number } | null = null;
   paintingRegistry.forEach((entry, id) => {
+    if (roomId && (entry.painting.roomId ?? "") !== roomId) {
+      return;
+    }
     let nearestIdx = -1;
     let nearestDist = Number.POSITIVE_INFINITY;
     points.forEach((point, index) => {
@@ -1887,9 +1903,10 @@ function updatePathPlayback() {
   }
   const nowMs = performance.now();
   const tour = ensureVisitorPathTourConfig();
+  const currentRoomId = resolveRoomIdAtPlanPoint({ x: visitor.position.x, z: visitor.position.z });
   const autoTarget = tour.autoTargetNearestPainting !== false;
   if (autoTarget) {
-    const nearest = findNearestPaintingEntryToPoint({ x: visitor.position.x, z: visitor.position.z });
+    const nearest = findNearestPaintingEntryToPoint({ x: visitor.position.x, z: visitor.position.z }, Number.POSITIVE_INFINITY, currentRoomId);
     if (nearest) {
       movement.focusTarget = nearest.paintingSpot.center.clone();
     }
@@ -1921,7 +1938,7 @@ function updatePathPlayback() {
     return;
   }
   const point = points[pathPlaybackState.nextIndex];
-  const entry = findPaintingAssignedToKeyframe(points, pathPlaybackState.nextIndex);
+  const entry = findPaintingAssignedToKeyframe(points, pathPlaybackState.nextIndex, currentRoomId);
   const stopSeconds = clampNumber(Number.isFinite(Number(tour.stopOnPaintingSeconds)) ? Number(tour.stopOnPaintingSeconds) : 1.5, 0, 60);
   const cardSeconds = clampNumber(Number.isFinite(Number(tour.cardSeconds)) ? Number(tour.cardSeconds) : 2.5, 0, 60);
   const shouldOpenCard = tour.openPaintingCard !== false;
