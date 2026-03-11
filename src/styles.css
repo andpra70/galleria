@@ -1198,6 +1198,18 @@ label[for="art-edit-image-url"] {
     max-height: none;
   }
 
+  /* Mobile preview: only captions/synoptic, no image */
+  #art-card:not(.is-editing) #art-card-image {
+    display: none;
+  }
+
+  #art-card:not(.is-editing) #art-card-preview-text {
+    order: 1;
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+  }
+
   #art-card.is-editing {
     grid-template-columns: 1fr;
     grid-template-areas:
