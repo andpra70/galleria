@@ -150,11 +150,14 @@ const configWhereLng = mustEl<HTMLInputElement>("config-where-lng");
 const configMapToolButtons = Array.from(document.querySelectorAll<HTMLButtonElement>(".config-map-tool"));
 const configMapToggleSnapBtn = mustEl<HTMLButtonElement>("config-map-toggle-snap");
 const configMapToggleMagnetBtn = mustEl<HTMLButtonElement>("config-map-toggle-magnet");
-const configMapDeleteRoomBtn = mustEl<HTMLButtonElement>("config-map-delete-room");
+const configMapResetViewBtn = mustEl<HTMLButtonElement>("config-map-reset-view");
+const configMapDeleteRoomBtn = document.getElementById("config-map-delete-room") as HTMLButtonElement | null;
 const configMapFloorColor = mustEl<HTMLInputElement>("config-map-floor-color");
 const configMapWallColor = mustEl<HTMLInputElement>("config-map-wall-color");
 const configMapWallHeightCm = mustEl<HTMLInputElement>("config-map-wall-height-cm");
 const configMapWallThicknessCm = mustEl<HTMLInputElement>("config-map-wall-thickness-cm");
+const configMapWallHeightCmWall = mustEl<HTMLInputElement>("config-map-wall-height-cm-wall");
+const configMapWallThicknessCmWall = mustEl<HTMLInputElement>("config-map-wall-thickness-cm-wall");
 const configMapMinPaintingDistanceM = mustEl<HTMLInputElement>("config-map-min-painting-distance-m");
 const configMapOpeningType = mustEl<HTMLSelectElement>("config-map-opening-type");
 const configMapOpeningWidthCm = mustEl<HTMLInputElement>("config-map-opening-width-cm");
@@ -168,7 +171,7 @@ const configMapLightDistanceM = mustEl<HTMLInputElement>("config-map-light-dista
 const configMapLightPenumbra = mustEl<HTMLInputElement>("config-map-light-penumbra");
 const configGalleryMapEditor = mustEl<SVGSVGElement>("config-gallery-map-editor");
 const configGalleryMapSubTabButtons = Array.from(
-  document.querySelectorAll<HTMLButtonElement>("#config-gallery-map-tabs .config-subtab")
+  document.querySelectorAll<HTMLButtonElement>('[data-config-tab-panel="gallery-map"] [data-gallery-map-subtab]')
 );
 const configGalleryMapSubTabPanels = Array.from(document.querySelectorAll<HTMLElement>("[data-gallery-map-subtab-panel]"));
 const configIntroMd = mustEl<HTMLTextAreaElement>("config-intro-md");
@@ -224,7 +227,11 @@ type GalleryMapDragAction =
   | "createWall"
   | "moveRoom"
   | "resizeRoom"
+  | "resizeWallStart"
+  | "resizeWallEnd"
+  | "movePaintingOnMap"
   | "moveLight"
+  | "moveLightTarget"
   | "resizeOpeningStart"
   | "resizeOpeningEnd"
   | "moveCameraStart"
@@ -247,7 +254,24 @@ type GalleryMapRoomResizeState = {
   startWidth: number;
   startDepth: number;
 };
+type GalleryMapWallResizeState = {
+  wallIndex: number;
+  handle: "start" | "end";
+  startX1: number;
+  startZ1: number;
+  startX2: number;
+  startZ2: number;
+};
+type GalleryMapPaintingMoveState = {
+  paintingId: string;
+};
 type GalleryMapLightMoveState = {
+  lightId: string;
+  startPointer: PlanPoint;
+  startX: number;
+  startZ: number;
+};
+type GalleryMapLightTargetMoveState = {
   lightId: string;
   startPointer: PlanPoint;
   startX: number;
@@ -381,11 +405,15 @@ const galleryMapEditorState: {
   dragStart: PlanPoint | null;
   dragCurrent: PlanPoint | null;
   selectedRoomId: string | null;
+  selectedCustomWallIndex: number | null;
   selectedOpening: GalleryMapOpeningRef | null;
   selectedLightId: string | null;
   movingRoom: GalleryMapRoomMoveState | null;
   resizingRoom: GalleryMapRoomResizeState | null;
+  resizingWall: GalleryMapWallResizeState | null;
+  movingPainting: GalleryMapPaintingMoveState | null;
   movingLight: GalleryMapLightMoveState | null;
+  movingLightTarget: GalleryMapLightTargetMoveState | null;
   resizingOpening: GalleryMapOpeningResizeState | null;
   panning: GalleryMapPanState | null;
   viewZoom: number;
@@ -401,11 +429,15 @@ const galleryMapEditorState: {
   dragStart: null,
   dragCurrent: null,
   selectedRoomId: null,
+  selectedCustomWallIndex: null,
   selectedOpening: null,
   selectedLightId: null,
   movingRoom: null,
   resizingRoom: null,
+  resizingWall: null,
+  movingPainting: null,
   movingLight: null,
+  movingLightTarget: null,
   resizingOpening: null,
   panning: null,
   viewZoom: 1,
@@ -551,10 +583,11 @@ const appContext = {
   },
 };
 
-const { computeWallPlacement, applyPaintingPlacement, clampPaintingOffset, clampPaintingCenterY } = createPaintingPlacementHelpers({
+const { applyPaintingPlacement, clampPaintingOffset, clampPaintingCenterY } = createPaintingPlacementHelpers({
   THREE,
   upAxis,
   getRoomsById: () => roomsById,
+  getConfig: () => config,
   getWallSpan,
 });
 
@@ -565,6 +598,7 @@ const { buildRoom, buildCustomWalls } = createWorldBuilder({
   wallMeshes,
   wallColliders,
   cmToM,
+  getRoomWallThickness: () => Math.max(0.02, Number(config?.rendering?.wallThickness ?? 0.16)),
 });
 
 const movementActions = createMovementActions({
@@ -631,7 +665,6 @@ const { inferPaintingDimensions, resolvePaintingAspectRatio, applyPaintingDimens
 const buildPainting = createPaintingBuilder({
   app: appContext,
   placementOps: {
-    computeWallPlacement,
     applyPaintingPlacement,
   },
   imageOps: {
@@ -1219,16 +1252,35 @@ function setSelectedGalleryMapRoom(roomId: string | null) {
   } else {
     galleryMapEditorState.selectedRoomId = roomId;
   }
-  galleryMapEditorState.selectedOpening = null;
-  configMapDeleteRoomBtn.disabled = !galleryMapEditorState.selectedRoomId;
+  galleryMapEditorState.selectedCustomWallIndex = null;
+  setSelectedGalleryMapOpening(null);
+  if (configMapDeleteRoomBtn) {
+    configMapDeleteRoomBtn.disabled = !galleryMapEditorState.selectedRoomId;
+  }
+}
+
+function setSelectedGalleryMapCustomWall(wallIndex: number | null) {
+  const walls = ensureCustomWallsArray();
+  if (!Number.isInteger(wallIndex) || wallIndex == null || wallIndex < 0 || wallIndex >= walls.length) {
+    galleryMapEditorState.selectedCustomWallIndex = null;
+    return;
+  }
+  galleryMapEditorState.selectedCustomWallIndex = wallIndex;
+  galleryMapEditorState.selectedRoomId = null;
+  setSelectedGalleryMapOpening(null);
+  if (configMapDeleteRoomBtn) {
+    configMapDeleteRoomBtn.disabled = !galleryMapEditorState.selectedRoomId;
+  }
 }
 
 function setSelectedGalleryMapOpening(openingRef: GalleryMapOpeningRef | null) {
   if (!openingRef || !resolveOpeningGeometryFromRef(openingRef)) {
     galleryMapEditorState.selectedOpening = null;
+    syncSelectedOpeningControls();
     return;
   }
   galleryMapEditorState.selectedOpening = openingRef;
+  syncSelectedOpeningControls();
 }
 
 function getSelectedGalleryLight() {
@@ -1246,9 +1298,12 @@ function setSelectedGalleryMapLight(lightId: string | null) {
   } else {
     galleryMapEditorState.selectedLightId = lightId;
     galleryMapEditorState.selectedRoomId = null;
+    galleryMapEditorState.selectedCustomWallIndex = null;
   }
-  galleryMapEditorState.selectedOpening = null;
-  configMapDeleteRoomBtn.disabled = !galleryMapEditorState.selectedRoomId;
+  setSelectedGalleryMapOpening(null);
+  if (configMapDeleteRoomBtn) {
+    configMapDeleteRoomBtn.disabled = !galleryMapEditorState.selectedRoomId;
+  }
   syncGalleryLightTargetOptions();
   syncSelectedGalleryLightControls();
 }
@@ -1271,6 +1326,25 @@ function getPaintingPlanPointById(paintingId?: string | null): PlanPoint | null 
   const painting = config.paintings.find((candidate) => candidate.id === paintingId && candidate.placed !== false);
   if (!painting) {
     return null;
+  }
+  const customWallId = (painting.customWallId ?? "").trim();
+  if (customWallId) {
+    const customWall = ensureCustomWallsArray().find((wall) => (wall.id ?? "").trim() === customWallId);
+    if (!customWall) {
+      return null;
+    }
+    const x1 = Number(customWall.x1 ?? 0);
+    const z1 = Number(customWall.z1 ?? 0);
+    const x2 = Number(customWall.x2 ?? 0);
+    const z2 = Number(customWall.z2 ?? 0);
+    const length = Math.hypot(x2 - x1, z2 - z1);
+    if (length < 0.05) {
+      return null;
+    }
+    const along = clampNumber(Number(painting.customWallOffset ?? painting.offset ?? 0), 0, length);
+    const ux = (x2 - x1) / length;
+    const uz = (z2 - z1) / length;
+    return { x: x1 + ux * along, z: z1 + uz * along };
   }
   const room = config.rooms.find((candidate) => candidate.id === painting.roomId);
   if (!room) {
@@ -1307,6 +1381,195 @@ function getPaintingDimensionsCm(painting: (typeof config)["paintings"][number])
       ? Math.max(1, Math.round(mToCm(heightFromM)))
       : Math.max(1, Math.round(safeWidthCm * 0.75));
   return { widthCm: safeWidthCm, heightCm: safeHeightCm };
+}
+
+function estimatePaintingHalfHeightM(painting: (typeof config)["paintings"][number]) {
+  const { heightCm } = getPaintingDimensionsCm(painting);
+  return Math.max(0.2, heightCm / CM_PER_M * 0.5 + 0.1);
+}
+
+function clampAllPaintingsToCurrentGeometry() {
+  config.paintings.forEach((painting) => {
+    if (painting.placed === false) {
+      return;
+    }
+    const half = estimatePaintingHalfHeightM(painting);
+    const customWallId = (painting.customWallId ?? "").trim();
+    if (customWallId) {
+      const customWall = ensureCustomWallsArray().find((wall) => (wall.id ?? "").trim() === customWallId);
+      if (!customWall) {
+        return;
+      }
+      const dx = Number(customWall.x2 ?? 0) - Number(customWall.x1 ?? 0);
+      const dz = Number(customWall.z2 ?? 0) - Number(customWall.z1 ?? 0);
+      const length = Math.hypot(dx, dz);
+      const margin = Math.max(0.45, getPaintingDimensionsCm(painting).widthCm / CM_PER_M * 0.5 + 0.12);
+      const offset = clampNumber(Number(painting.customWallOffset ?? painting.offset ?? 0), margin, Math.max(margin, length - margin));
+      painting.customWallOffset = offset;
+      painting.customWallOffsetCm = Math.round(offset * CM_PER_M);
+      painting.offset = offset;
+      const wallHeight = Math.max(0.2, Number(customWall.height ?? 3));
+      painting.centerY = clampNumber(Number(painting.centerY ?? 1.65), half, Math.max(half, wallHeight - half));
+      return;
+    }
+    const room = config.rooms.find((candidate) => candidate.id === painting.roomId);
+    if (!room) {
+      return;
+    }
+    const wall = (painting.wall ?? "north") as WallSide;
+    const span = getWallSpan(room, wall);
+    const margin = Math.max(0.45, getPaintingDimensionsCm(painting).widthCm / CM_PER_M * 0.5 + 0.12);
+    painting.offset = clampNumber(Number(painting.offset ?? 0), margin, Math.max(margin, span - margin));
+    painting.centerY = clampNumber(Number(painting.centerY ?? 1.65), half, Math.max(half, room.height - half));
+  });
+}
+
+function applyGlobalWallParamsFromInputs(source: "room" | "wall" = "room") {
+  const rawHeightCm = source === "wall" ? Number(configMapWallHeightCmWall.value) : Number(configMapWallHeightCm.value);
+  const rawThicknessCm = source === "wall" ? Number(configMapWallThicknessCmWall.value) : Number(configMapWallThicknessCm.value);
+  const heightCm = Math.max(100, rawHeightCm || 300);
+  const thicknessCm = Math.max(5, rawThicknessCm || 16);
+  const roundedHeight = String(Math.round(heightCm));
+  const roundedThickness = String(Math.round(thicknessCm));
+  configMapWallHeightCm.value = roundedHeight;
+  configMapWallThicknessCm.value = roundedThickness;
+  configMapWallHeightCmWall.value = roundedHeight;
+  configMapWallThicknessCmWall.value = roundedThickness;
+  config.rooms.forEach((room) => {
+    room.height = heightCm / CM_PER_M;
+    room.heightCm = Math.round(heightCm);
+  });
+  ensureCustomWallsArray().forEach((wall) => {
+    wall.height = heightCm / CM_PER_M;
+    wall.heightCm = Math.round(heightCm);
+    wall.thickness = thicknessCm / CM_PER_M;
+    wall.thicknessCm = Math.round(thicknessCm);
+  });
+  const rendering = ensureRenderingConfig();
+  rendering.wallThickness = thicknessCm / CM_PER_M;
+  rendering.wallThicknessCm = Math.round(thicknessCm);
+  clampAllPaintingsToCurrentGeometry();
+  rebuildSceneFromConfig();
+  renderGalleryMapEditor();
+}
+
+function resolveOpeningSpanMForRoomOpening(room: GalleryRoom, opening: GalleryRoomOpening) {
+  const wall = toWallSide(opening.wall) ?? "north";
+  return wall === "north" || wall === "south" ? room.width : room.depth;
+}
+
+function resolveOpeningSpanMForCustomWall(wall: { x1?: number; z1?: number; x2?: number; z2?: number }) {
+  const x1 = Number(wall.x1 ?? 0);
+  const z1 = Number(wall.z1 ?? 0);
+  const x2 = Number(wall.x2 ?? 0);
+  const z2 = Number(wall.z2 ?? 0);
+  return Math.hypot(x2 - x1, z2 - z1);
+}
+
+function applyOpeningParamSet(
+  opening: GalleryRoomOpening,
+  values: { type: "door" | "window" | "opening"; widthM: number; baseM: number; heightM: number },
+  wallSpanM: number,
+  wallHeightM: number
+) {
+  const width = clampNumber(values.widthM, 0.05, Math.max(0.05, wallSpanM));
+  const centerPrev = getOpeningCenterM(opening);
+  const center = clampNumber(centerPrev, width * 0.5, Math.max(width * 0.5, wallSpanM - width * 0.5));
+  const base = clampNumber(values.baseM, 0, Math.max(0, wallHeightM - 0.05));
+  const height = clampNumber(values.heightM, 0.05, Math.max(0.05, wallHeightM - base));
+  opening.type = values.type;
+  opening.width = width;
+  opening.widthCm = Math.round(width * CM_PER_M);
+  opening.center = center;
+  opening.centerCm = Math.round(center * CM_PER_M);
+  opening.base = base;
+  opening.baseCm = Math.round(base * CM_PER_M);
+  opening.height = height;
+  opening.heightCm = Math.round(height * CM_PER_M);
+}
+
+function getSelectedOpeningContext() {
+  const ref = galleryMapEditorState.selectedOpening;
+  if (!ref) {
+    return null;
+  }
+  if (ref.kind === "room") {
+    const room = config.rooms.find((candidate) => candidate.id === ref.roomId);
+    if (!room || !Array.isArray(room.openings) || ref.openingIndex < 0 || ref.openingIndex >= room.openings.length) {
+      return null;
+    }
+    const opening = room.openings[ref.openingIndex];
+    const wall = toWallSide(opening.wall) ?? ref.wall;
+    const span = resolveOpeningSpanMForRoomOpening(room, opening);
+    const wallHeight = Math.max(0.1, Number(room.height ?? 3));
+    return { ref, opening, room, wall, span, wallHeight } as const;
+  }
+  const walls = ensureCustomWallsArray();
+  if (ref.wallIndex < 0 || ref.wallIndex >= walls.length) {
+    return null;
+  }
+  const wall = walls[ref.wallIndex];
+  if (!Array.isArray(wall.openings) || ref.openingIndex < 0 || ref.openingIndex >= wall.openings.length) {
+    return null;
+  }
+  const opening = wall.openings[ref.openingIndex];
+  const span = resolveOpeningSpanMForCustomWall(wall);
+  const wallHeight = Math.max(0.1, Number(wall.height ?? 3));
+  return { ref, opening, wallConfig: wall, span, wallHeight } as const;
+}
+
+function syncSelectedOpeningControls() {
+  const selected = getSelectedOpeningContext();
+  const disabled = !selected;
+  configMapOpeningType.disabled = disabled;
+  configMapOpeningWidthCm.disabled = disabled;
+  configMapOpeningBaseCm.disabled = disabled;
+  configMapOpeningHeightCm.disabled = disabled;
+  if (!selected) {
+    return;
+  }
+  configMapOpeningType.value = resolveOpeningType(selected.opening);
+  configMapOpeningWidthCm.value = String(Math.round(getOpeningWidthM(selected.opening) * CM_PER_M || 120));
+  configMapOpeningBaseCm.value = String(Math.round(getOpeningBaseM(selected.opening) * CM_PER_M || 0));
+  configMapOpeningHeightCm.value = String(Math.round(getOpeningHeightM(selected.opening) * CM_PER_M || 220));
+}
+
+function applySelectedOpeningParamsFromInputs() {
+  const selected = getSelectedOpeningContext();
+  if (!selected) {
+    return;
+  }
+  const type = (configMapOpeningType.value as "door" | "window" | "opening") || "opening";
+  const widthCm = Math.max(20, Number(configMapOpeningWidthCm.value) || 120);
+  const baseCm = Math.max(0, Number(configMapOpeningBaseCm.value) || 0);
+  const heightCm = Math.max(20, Number(configMapOpeningHeightCm.value) || 220);
+  configMapOpeningWidthCm.value = String(Math.round(widthCm));
+  configMapOpeningBaseCm.value = String(Math.round(baseCm));
+  configMapOpeningHeightCm.value = String(Math.round(heightCm));
+  const values = { type, widthM: widthCm / CM_PER_M, baseM: baseCm / CM_PER_M, heightM: heightCm / CM_PER_M };
+  if (selected.ref.kind === "room") {
+    const previous = {
+      type: resolveOpeningType(selected.opening),
+      wall: selected.wall,
+      center: getOpeningCenterM(selected.opening),
+      width: getOpeningWidthM(selected.opening),
+      base: getOpeningBaseM(selected.opening),
+      height: getOpeningHeightM(selected.opening),
+    };
+    applyOpeningParamSet(selected.opening, values, selected.span, selected.wallHeight);
+    removeMirroredOpeningOnAdjacentRooms(selected.room, selected.wall, previous);
+    mirrorOpeningOnAdjacentRooms(selected.room, selected.wall, {
+      type: resolveOpeningType(selected.opening),
+      center: getOpeningCenterM(selected.opening),
+      width: getOpeningWidthM(selected.opening),
+      base: getOpeningBaseM(selected.opening),
+      height: getOpeningHeightM(selected.opening),
+    });
+  } else {
+    applyOpeningParamSet(selected.opening, values, selected.span, selected.wallHeight);
+  }
+  rebuildSceneFromConfig();
+  renderGalleryMapEditor();
 }
 
 function getGalleryMapObserverSignature() {
@@ -1394,6 +1657,21 @@ function applyCameraPointFromMapDrag(rawPoint: PlanPoint, handle: "start" | "tar
   const startPoint = resolveConfigCameraStartPlanPoint();
   const targetPoint = resolveConfigCameraTargetPlanPoint(startPoint);
   syncConfigCameraOrientationFromPoints(startPoint, targetPoint);
+  const startCfg = ensureVisitorStartConfig();
+  const runtimeStartY = Number.isFinite(Number(startCfg.y)) ? Number(startCfg.y) : visitor.eyeHeight;
+  const runtimeTargetY = Number.isFinite(Number(startCfg.targetY)) ? Number(startCfg.targetY) : runtimeStartY;
+  const dx = targetPoint.x - startPoint.x;
+  const dz = targetPoint.z - startPoint.z;
+  const horizontal = Math.hypot(dx, dz);
+  if (horizontal > 0.0001) {
+    movement.yaw = Math.atan2(dx, dz);
+    movement.pitch = clampNumber(Math.atan2(runtimeTargetY - runtimeStartY, horizontal), MIN_PITCH, MAX_PITCH);
+  }
+  visitor.position.set(startPoint.x, visitor.eyeHeight, startPoint.z);
+  movement.focusTarget = new THREE.Vector3(targetPoint.x, runtimeTargetY, targetPoint.z);
+  movement.route = [];
+  movement.destination = null;
+  movement.finalDestination = null;
   syncConfigCameraFieldsFromState();
   renderGalleryMapEditor();
 }
@@ -1401,6 +1679,25 @@ function applyCameraPointFromMapDrag(rawPoint: PlanPoint, handle: "start" | "tar
 function refreshGalleryMapObserverIfNeeded(force = false) {
   if (!isConfigTabActive("gallery-map")) {
     return;
+  }
+  const start = ensureVisitorStartConfig();
+  start.x = roundConfigNumber(visitor.position.x);
+  start.y = roundConfigNumber(visitor.position.y);
+  start.z = roundConfigNumber(visitor.position.z);
+  const liveTarget = movement.focusTarget
+    ? movement.focusTarget.clone()
+    : new THREE.Vector3(
+        visitor.position.x + Math.sin(movement.yaw) * 3,
+        visitor.position.y + Math.sin(movement.pitch) * 3,
+        visitor.position.z + Math.cos(movement.yaw) * 3
+      );
+  start.targetX = roundConfigNumber(liveTarget.x);
+  start.targetY = roundConfigNumber(liveTarget.y);
+  start.targetZ = roundConfigNumber(liveTarget.z);
+  start.yaw = roundConfigNumber(movement.yaw, 6);
+  start.pitch = roundConfigNumber(movement.pitch, 6);
+  if (isGalleryMapSubTabActive("camera")) {
+    syncConfigCameraFieldsFromState();
   }
   const signature = getGalleryMapObserverSignature();
   if (!force && signature === lastGalleryMapObserverSignature) {
@@ -1429,7 +1726,22 @@ function focusPaintingFromGalleryMap(paintingId: string) {
   return true;
 }
 
+function moveVisitorToPlanPointFromMap(rawPoint: PlanPoint) {
+  const assisted = applyPlanPointAssist(rawPoint, "generic");
+  const target = new THREE.Vector3(assisted.x, visitor.eyeHeight, assisted.z);
+  const clamped = movementActions.clampToWalkable(target);
+  if (!clamped) {
+    return false;
+  }
+  movementActions.moveVisitorTo(clamped, null);
+  return true;
+}
+
 function getGalleryLightTargetPlanPoint(light: GallerySpotLightConfig) {
+  const preview = getMovingLightTargetPreview(light);
+  if (preview) {
+    return preview;
+  }
   const byPainting = getPaintingPlanPointById(light.targetPaintingId);
   if (byPainting) {
     return byPainting;
@@ -1575,6 +1887,17 @@ function getMovingLightPreview(light: GallerySpotLightConfig): PlanPoint | null 
   return applyPlanPointAssist({ x: moving.startX + deltaX, z: moving.startZ + deltaZ }, "generic");
 }
 
+function getMovingLightTargetPreview(light: GallerySpotLightConfig): PlanPoint | null {
+  const moving = galleryMapEditorState.movingLightTarget;
+  const pointer = galleryMapEditorState.dragCurrent;
+  if (!moving || !pointer || galleryMapEditorState.dragAction !== "moveLightTarget" || moving.lightId !== light.id) {
+    return null;
+  }
+  const deltaX = pointer.x - moving.startPointer.x;
+  const deltaZ = pointer.z - moving.startPointer.z;
+  return applyPlanPointAssist({ x: moving.startX + deltaX, z: moving.startZ + deltaZ }, "generic");
+}
+
 function getGalleryLightPlanPoint(light: GallerySpotLightConfig): PlanPoint {
   const preview = getMovingLightPreview(light);
   if (preview) {
@@ -1597,10 +1920,9 @@ function addGalleryLightAtPoint(point: PlanPoint) {
   const penumbra = clampNumber(Number.isFinite(rawPenumbra) ? rawPenumbra : 0.22, 0, 1);
   const targetPaintingId = configMapLightTargetPainting.value || "";
   const targetPoint = getPaintingPlanPointById(targetPaintingId);
-  if (!targetPaintingId || !targetPoint) {
-    configMapLightTargetPainting.focus();
-    return;
-  }
+  const nearestWall = findNearestPlanWall(point, Number.POSITIVE_INFINITY);
+  const nearestWallTarget = nearestWall ? projectPointToSegment(point, nearestWall.wall.from, nearestWall.wall.to) : null;
+  const fallbackTarget = nearestWallTarget ? { x: nearestWallTarget.x, z: nearestWallTarget.z } : point;
   const light: GallerySpotLightConfig = { id: nextGalleryLightId() };
   light.x = point.x;
   light.z = point.z;
@@ -1614,12 +1936,12 @@ function addGalleryLightAtPoint(point: PlanPoint) {
   light.angleDeg = angleDeg;
   light.penumbra = penumbra;
   light.decay = 1.2;
-  light.targetPaintingId = targetPaintingId;
-  light.targetX = targetPoint.x;
-  light.targetZ = targetPoint.z;
+  light.targetPaintingId = targetPoint ? targetPaintingId : "";
+  light.targetX = targetPoint ? targetPoint.x : fallbackTarget.x;
+  light.targetZ = targetPoint ? targetPoint.z : fallbackTarget.z;
   light.targetY = 1.65;
-  light.targetXCm = Math.round(targetPoint.x * 100);
-  light.targetZCm = Math.round(targetPoint.z * 100);
+  light.targetXCm = Math.round((targetPoint ? targetPoint.x : fallbackTarget.x) * 100);
+  light.targetZCm = Math.round((targetPoint ? targetPoint.z : fallbackTarget.z) * 100);
   light.targetYCm = 165;
   lights.push(light);
   setSelectedGalleryMapLight(light.id ?? null);
@@ -1672,6 +1994,35 @@ function applyGalleryLightMoveFromDrag(end: PlanPoint) {
     light.targetYCm = Math.round(Number(light.targetY) * 100);
   }
   rebuildSceneFromConfig();
+}
+
+function applyGalleryLightTargetMoveFromDrag(end: PlanPoint) {
+  const moving = galleryMapEditorState.movingLightTarget;
+  if (!moving) {
+    return;
+  }
+  const light = ensureGalleryLightsArray().find((candidate) => candidate.id === moving.lightId);
+  if (!light) {
+    setSelectedGalleryMapLight(null);
+    return;
+  }
+  const deltaX = end.x - moving.startPointer.x;
+  const deltaZ = end.z - moving.startPointer.z;
+  const moved = applyPlanPointAssist({ x: moving.startX + deltaX, z: moving.startZ + deltaZ }, "generic");
+  const nextX = moved.x;
+  const nextZ = moved.z;
+  if (Math.abs(nextX - Number(light.targetX ?? 0)) < 0.0001 && Math.abs(nextZ - Number(light.targetZ ?? 0)) < 0.0001) {
+    return;
+  }
+  light.targetPaintingId = "";
+  light.targetX = nextX;
+  light.targetZ = nextZ;
+  light.targetY = Number.isFinite(Number(light.targetY)) ? Number(light.targetY) : 1.65;
+  light.targetXCm = Math.round(nextX * 100);
+  light.targetZCm = Math.round(nextZ * 100);
+  light.targetYCm = Math.round(Number(light.targetY) * 100);
+  rebuildSceneFromConfig();
+  syncSelectedGalleryLightControls();
 }
 
 function getMovingRoomPreview(room: GalleryRoom): { x: number; z: number } | null {
@@ -1742,6 +2093,32 @@ function getRoomEditorGeometry(room: GalleryRoom): { x: number; z: number; width
   };
 }
 
+function computeResizedCustomWallFromState(resizing: GalleryMapWallResizeState, rawPointer: PlanPoint) {
+  const anchor =
+    resizing.handle === "start" ? { x: resizing.startX2, z: resizing.startZ2 } : { x: resizing.startX1, z: resizing.startZ1 };
+  const moved = applyPlanPointAssist(rawPointer, "wall-create", { anchor });
+  const next =
+    resizing.handle === "start"
+      ? { x1: moved.x, z1: moved.z, x2: resizing.startX2, z2: resizing.startZ2 }
+      : { x1: resizing.startX1, z1: resizing.startZ1, x2: moved.x, z2: moved.z };
+  return next;
+}
+
+function getCustomWallEditorGeometry(wall: { x1?: number; z1?: number; x2?: number; z2?: number }, wallIndex: number) {
+  const x1 = Number(wall.x1 ?? 0);
+  const z1 = Number(wall.z1 ?? 0);
+  const x2 = Number(wall.x2 ?? 0);
+  const z2 = Number(wall.z2 ?? 0);
+  const resizing = galleryMapEditorState.resizingWall;
+  const pointer = galleryMapEditorState.dragCurrent;
+  const dragging =
+    galleryMapEditorState.dragAction === "resizeWallStart" || galleryMapEditorState.dragAction === "resizeWallEnd";
+  if (!dragging || !resizing || !pointer || resizing.wallIndex !== wallIndex) {
+    return { x1, z1, x2, z2 };
+  }
+  return computeResizedCustomWallFromState(resizing, pointer);
+}
+
 function getGalleryMapEditorSize() {
   const width = Math.max(280, Math.floor(configGalleryMapEditor.clientWidth || 360));
   const height = Math.max(240, Math.floor(configGalleryMapEditor.clientHeight || 360));
@@ -1769,8 +2146,9 @@ function getGalleryPlanBounds() {
     include(preview.x + preview.width, preview.z + preview.depth);
   });
   ensureCustomWallsArray().forEach((wall, wallIndex) => {
-    include(Number(wall.x1 ?? 0), Number(wall.z1 ?? 0));
-    include(Number(wall.x2 ?? 0), Number(wall.z2 ?? 0));
+    const preview = getCustomWallEditorGeometry(wall, wallIndex);
+    include(preview.x1, preview.z1);
+    include(preview.x2, preview.z2);
   });
   ensureGalleryLightsArray().forEach((light) => {
     const source = getGalleryLightPlanPoint(light);
@@ -2510,15 +2888,33 @@ function findOpeningRefAtPoint(point: PlanPoint) {
 function renderGalleryMapEditor() {
   const { width, height } = getGalleryMapEditorSize();
   const { toScreen, scale, bounds } = createPlanTransforms(width, height);
-  const cameraTabActive = isGalleryMapSubTabActive("camera");
   const draggingCameraHandle =
     galleryMapEditorState.dragAction === "moveCameraStart" || galleryMapEditorState.dragAction === "moveCameraTarget";
   const draggingOpeningHandle =
     galleryMapEditorState.dragAction === "resizeOpeningStart" || galleryMapEditorState.dragAction === "resizeOpeningEnd";
+  const draggingWallHandle =
+    galleryMapEditorState.dragAction === "resizeWallStart" || galleryMapEditorState.dragAction === "resizeWallEnd";
+  const draggingPaintingMarker = galleryMapEditorState.dragAction === "movePaintingOnMap";
+  const draggingLightHandle =
+    galleryMapEditorState.dragAction === "moveLight" || galleryMapEditorState.dragAction === "moveLightTarget";
   configGalleryMapEditor.style.cursor =
-    galleryMapEditorState.panning || draggingCameraHandle || draggingOpeningHandle ? "grabbing" : "crosshair";
+    galleryMapEditorState.panning ||
+    draggingCameraHandle ||
+    draggingOpeningHandle ||
+    draggingWallHandle ||
+    draggingPaintingMarker ||
+    draggingLightHandle
+      ? "grabbing"
+      : "crosshair";
+  const walls = ensureCustomWallsArray();
+  if (
+    galleryMapEditorState.selectedCustomWallIndex != null &&
+    (galleryMapEditorState.selectedCustomWallIndex < 0 || galleryMapEditorState.selectedCustomWallIndex >= walls.length)
+  ) {
+    galleryMapEditorState.selectedCustomWallIndex = null;
+  }
   if (galleryMapEditorState.selectedOpening && !resolveOpeningGeometryFromRef(galleryMapEditorState.selectedOpening)) {
-    galleryMapEditorState.selectedOpening = null;
+    setSelectedGalleryMapOpening(null);
   }
 
   const gridLines: string[] = [];
@@ -2585,7 +2981,9 @@ function renderGalleryMapEditor() {
             .join("")
         : "";
       return `
-        <rect x="${left.toFixed(1)}" y="${top.toFixed(1)}" width="${widthPx.toFixed(1)}" height="${heightPx.toFixed(1)}" fill="${
+        <rect x="${left.toFixed(1)}" y="${top.toFixed(1)}" width="${widthPx.toFixed(1)}" height="${heightPx.toFixed(1)}" data-room-id="${
+          room.id
+        }" fill="${
           selected ? "rgba(251,146,60,0.18)" : "rgba(14,116,144,0.15)"
         }" stroke="${selected ? "#ea580c" : "rgba(15,23,42,0.88)"}" stroke-width="${selected ? 3 : 2}" />
         <text x="${(left + 6).toFixed(1)}" y="${(top + 14).toFixed(1)}" font-size="11" fill="#0f172a">${label}</text>
@@ -2595,11 +2993,28 @@ function renderGalleryMapEditor() {
     .join("");
 
   const customWalls = ensureCustomWallsArray()
-    .map((wall) => {
-      const a = toScreen({ x: Number(wall.x1 ?? 0), z: Number(wall.z1 ?? 0) });
-      const b = toScreen({ x: Number(wall.x2 ?? 0), z: Number(wall.z2 ?? 0) });
+    .map((wall, wallIndex) => {
+      const preview = getCustomWallEditorGeometry(wall, wallIndex);
+      const a = toScreen({ x: preview.x1, z: preview.z1 });
+      const b = toScreen({ x: preview.x2, z: preview.z2 });
+      const selected = wallIndex === galleryMapEditorState.selectedCustomWallIndex;
+      const resizing =
+        (galleryMapEditorState.dragAction === "resizeWallStart" || galleryMapEditorState.dragAction === "resizeWallEnd") &&
+        galleryMapEditorState.resizingWall?.wallIndex === wallIndex;
       const strokeWidth = Math.max(2, Number((Number(wall.thickness ?? 0.16) * scale).toFixed(2)));
-      return `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="#7c2d12" stroke-width="${strokeWidth}" stroke-linecap="round" />`;
+      const lineSvg = `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(
+        1
+      )}" stroke="${selected || resizing ? "#9a3412" : "#7c2d12"}" stroke-width="${selected || resizing ? strokeWidth + 1.6 : strokeWidth}" stroke-linecap="round" data-custom-wall-index="${wallIndex}" class="gallery-map-custom-wall-line" />`;
+      if (galleryMapEditorState.tool !== "wall" || (!selected && !resizing)) {
+        return lineSvg;
+      }
+      const startActive = resizing && galleryMapEditorState.resizingWall?.handle === "start";
+      const endActive = resizing && galleryMapEditorState.resizingWall?.handle === "end";
+      const handlesSvg = `
+        <circle cx="${a.x.toFixed(1)}" cy="${a.y.toFixed(1)}" r="${startActive ? 7 : 5.8}" class="gallery-map-wall-handle start" data-custom-wall-index="${wallIndex}" data-custom-wall-handle-side="start" />
+        <circle cx="${b.x.toFixed(1)}" cy="${b.y.toFixed(1)}" r="${endActive ? 7 : 5.8}" class="gallery-map-wall-handle end" data-custom-wall-index="${wallIndex}" data-custom-wall-handle-side="end" />
+      `;
+      return `${lineSvg}${handlesSvg}`;
     })
     .join("");
 
@@ -2685,7 +3100,7 @@ function renderGalleryMapEditor() {
         `;
       })();
       return `
-        <g class="gallery-map-opening opening-${geometry.type}">
+        <g class="gallery-map-opening opening-${geometry.type}" ${handleBaseAttrs} data-opening-select="1">
           <line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(
             1
           )}" stroke="${emphasized ? "rgba(15,23,42,0.36)" : "rgba(15,23,42,0.26)"}" stroke-width="${
@@ -2710,7 +3125,11 @@ function renderGalleryMapEditor() {
   const paintingMarkersSvg = config.paintings
     .filter((painting) => painting.placed !== false)
     .map((painting) => {
-      const point = getPaintingPlanPointById(painting.id);
+      const previewPoint =
+        galleryMapEditorState.dragAction === "movePaintingOnMap" && galleryMapEditorState.movingPainting?.paintingId === painting.id
+          ? galleryMapEditorState.dragCurrent
+          : null;
+      const point = previewPoint ?? getPaintingPlanPointById(painting.id);
       if (!point) {
         return "";
       }
@@ -2738,9 +3157,17 @@ function renderGalleryMapEditor() {
       }
       const a = toScreen(source);
       const b = toScreen(target);
+      const selected = light.id === galleryMapEditorState.selectedLightId;
+      const movingSource = galleryMapEditorState.dragAction === "moveLight" && galleryMapEditorState.movingLight?.lightId === light.id;
+      const movingTarget = galleryMapEditorState.dragAction === "moveLightTarget" && galleryMapEditorState.movingLightTarget?.lightId === light.id;
       return `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(
         1
-      )}" stroke="rgba(245,158,11,0.75)" stroke-width="1.8" stroke-dasharray="5 4" />`;
+      )}" stroke="rgba(245,158,11,0.75)" stroke-width="1.8" stroke-dasharray="5 4" />
+      <circle cx="${b.x.toFixed(1)}" cy="${b.y.toFixed(1)}" class="gallery-map-light-handle target" data-gallery-light-id="${light.id ?? ""}" data-gallery-light-handle="target" r="${
+        movingTarget ? 6.8 : selected ? 6 : 5
+      }" fill="${movingTarget ? "#f97316" : "#fdba74"}" stroke="${selected ? "#7c2d12" : "#9a3412"}" stroke-width="${
+        movingTarget ? 2.3 : 1.8
+      }" />`;
     })
     .join("");
 
@@ -2748,10 +3175,13 @@ function renderGalleryMapEditor() {
     .map((light) => {
       const source = getGalleryLightPlanPoint(light);
       const selected = light.id === galleryMapEditorState.selectedLightId;
+      const movingSource = galleryMapEditorState.dragAction === "moveLight" && galleryMapEditorState.movingLight?.lightId === light.id;
       const s = toScreen(source);
-      return `<circle cx="${s.x.toFixed(1)}" cy="${s.y.toFixed(1)}" r="${selected ? 6.5 : 5}" fill="${
+      return `<circle cx="${s.x.toFixed(1)}" cy="${s.y.toFixed(1)}" class="gallery-map-light-handle source" data-gallery-light-id="${light.id ?? ""}" data-gallery-light-handle="source" r="${
+        movingSource ? 7.2 : selected ? 6.5 : 5
+      }" fill="${
         selected ? "#f59e0b" : "#facc15"
-      }" stroke="${selected ? "#7c2d12" : "#92400e"}" stroke-width="${selected ? 2 : 1.4}" />`;
+      }" stroke="${selected ? "#7c2d12" : "#92400e"}" stroke-width="${movingSource ? 2.4 : selected ? 2 : 1.4}" />`;
     })
     .join("");
 
@@ -2766,23 +3196,21 @@ function renderGalleryMapEditor() {
     )}" y2="${observerDirPoint.y.toFixed(1)}" stroke="#7f1d1d" stroke-width="2.4" stroke-linecap="round" />
     <circle cx="${observerPoint.x.toFixed(1)}" cy="${observerPoint.y.toFixed(1)}" r="5.6" fill="#ef4444" stroke="#7f1d1d" stroke-width="1.5" />
   `;
-  const cameraDragSvg = cameraTabActive
-    ? (() => {
-        const start = resolveConfigCameraStartPlanPoint();
-        const target = resolveConfigCameraTargetPlanPoint(start);
-        const a = toScreen(start);
-        const b = toScreen(target);
-        const movingStart = galleryMapEditorState.dragAction === "moveCameraStart";
-        const movingTarget = galleryMapEditorState.dragAction === "moveCameraTarget";
-        return `
-          <line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(
-            1
-          )}" class="gallery-map-camera-link" stroke="rgba(14,116,144,0.9)" stroke-width="2.2" stroke-dasharray="6 4" />
-          <circle cx="${a.x.toFixed(1)}" cy="${a.y.toFixed(1)}" r="${movingStart ? 8.4 : 7.2}" class="gallery-map-camera-handle start" data-camera-handle="start" fill="#0ea5e9" stroke="#0c4a6e" stroke-width="2" />
-          <circle cx="${b.x.toFixed(1)}" cy="${b.y.toFixed(1)}" r="${movingTarget ? 8.4 : 7.2}" class="gallery-map-camera-handle target" data-camera-handle="target" fill="#10b981" stroke="#065f46" stroke-width="2" />
-        `;
-      })()
-    : "";
+  const cameraDragSvg = (() => {
+    const start = resolveConfigCameraStartPlanPoint();
+    const target = resolveConfigCameraTargetPlanPoint(start);
+    const a = toScreen(start);
+    const b = toScreen(target);
+    const movingStart = galleryMapEditorState.dragAction === "moveCameraStart";
+    const movingTarget = galleryMapEditorState.dragAction === "moveCameraTarget";
+    return `
+      <line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(
+        1
+      )}" class="gallery-map-camera-link" stroke="rgba(14,116,144,0.9)" stroke-width="2.2" stroke-dasharray="6 4" />
+      <circle cx="${a.x.toFixed(1)}" cy="${a.y.toFixed(1)}" r="${movingStart ? 8.4 : 7.2}" class="gallery-map-camera-handle start" data-camera-handle="start" fill="#0ea5e9" stroke="#0c4a6e" stroke-width="2" />
+      <circle cx="${b.x.toFixed(1)}" cy="${b.y.toFixed(1)}" r="${movingTarget ? 8.4 : 7.2}" class="gallery-map-camera-handle target" data-camera-handle="target" fill="#10b981" stroke="#065f46" stroke-width="2" />
+    `;
+  })();
 
   let preview = "";
   if (galleryMapEditorState.dragStart && galleryMapEditorState.dragCurrent) {
@@ -2917,6 +3345,111 @@ function applyRoomResizeFromDrag(end: PlanPoint) {
   rebuildSceneFromConfig();
 }
 
+function placePaintingAtPlanPoint(paintingId: string, point: PlanPoint) {
+  const painting = config.paintings.find((candidate) => candidate.id === paintingId);
+  if (!painting) {
+    return false;
+  }
+  const nearest = findNearestPlanWall(point, 0.5);
+  if (!nearest) {
+    return false;
+  }
+  if (nearest.wall.kind === "room") {
+    const room = config.rooms.find((candidate) => candidate.id === nearest.wall.roomId);
+    if (!room) {
+      return false;
+    }
+    const wall = nearest.wall.wall;
+    const span = getWallSpan(room, wall);
+    const dimensions = getPaintingDimensionsCm(painting);
+    const margin = Math.max(0.45, dimensions.widthCm / CM_PER_M * 0.5 + 0.12);
+    const offset = snapToStep(clampNumber(nearest.along, margin, Math.max(margin, span - margin)), PAINTING_SNAP_M);
+    painting.roomId = room.id;
+    painting.wall = wall;
+    painting.offset = offset;
+    painting.customWallId = undefined;
+    painting.customWallOffset = undefined;
+    painting.customWallOffsetCm = undefined;
+    painting.customWallSide = undefined;
+    painting.placed = true;
+    return true;
+  }
+  const customWall = ensureCustomWallsArray()[nearest.wall.wallIndex];
+  if (!customWall) {
+    return false;
+  }
+  const dx = Number(customWall.x2 ?? 0) - Number(customWall.x1 ?? 0);
+  const dz = Number(customWall.z2 ?? 0) - Number(customWall.z1 ?? 0);
+  const length = Math.hypot(dx, dz);
+  if (length < 0.05) {
+    return false;
+  }
+  const projected = projectPointToSegment(
+    point,
+    { x: Number(customWall.x1 ?? 0), z: Number(customWall.z1 ?? 0) },
+    { x: Number(customWall.x2 ?? 0), z: Number(customWall.z2 ?? 0) }
+  );
+  const ux = dx / length;
+  const uz = dz / length;
+  const px = Number(customWall.x1 ?? 0) + ux * (projected.t * length);
+  const pz = Number(customWall.z1 ?? 0) + uz * (projected.t * length);
+  const perpX = -uz;
+  const perpZ = ux;
+  const side = (point.x - px) * perpX + (point.z - pz) * perpZ >= 0 ? 1 : -1;
+  const dimensions = getPaintingDimensionsCm(painting);
+  const margin = Math.max(0.45, dimensions.widthCm / CM_PER_M * 0.5 + 0.12);
+  const offset = snapToStep(clampNumber(nearest.along, margin, Math.max(margin, length - margin)), PAINTING_SNAP_M);
+  painting.roomId = "";
+  painting.wall = "north";
+  painting.offset = offset;
+  painting.customWallId = customWall.id ?? "";
+  painting.customWallOffset = offset;
+  painting.customWallOffsetCm = Math.round(offset * CM_PER_M);
+  painting.customWallSide = side;
+  painting.placed = true;
+  return true;
+}
+
+function applyPaintingMoveFromMapDrag(end: PlanPoint) {
+  const moving = galleryMapEditorState.movingPainting;
+  if (!moving) {
+    return;
+  }
+  if (!placePaintingAtPlanPoint(moving.paintingId, end)) {
+    return;
+  }
+  rebuildSceneFromConfig();
+  renderFilmstrip();
+  renderGalleryMapEditor();
+}
+
+function applyCustomWallResizeFromDrag(end: PlanPoint) {
+  const resizing = galleryMapEditorState.resizingWall;
+  if (!resizing) {
+    return;
+  }
+  const walls = ensureCustomWallsArray();
+  if (resizing.wallIndex < 0 || resizing.wallIndex >= walls.length) {
+    setSelectedGalleryMapCustomWall(null);
+    return;
+  }
+  const wall = walls[resizing.wallIndex];
+  const next = computeResizedCustomWallFromState(resizing, end);
+  if (Math.hypot(next.x2 - next.x1, next.z2 - next.z1) < GALLERY_GRID_SNAP_M) {
+    return;
+  }
+  wall.x1 = next.x1;
+  wall.z1 = next.z1;
+  wall.x2 = next.x2;
+  wall.z2 = next.z2;
+  wall.x1Cm = Math.round(next.x1 * CM_PER_M);
+  wall.z1Cm = Math.round(next.z1 * CM_PER_M);
+  wall.x2Cm = Math.round(next.x2 * CM_PER_M);
+  wall.z2Cm = Math.round(next.z2 * CM_PER_M);
+  rebuildSceneFromConfig();
+  renderGalleryMapEditor();
+}
+
 function deleteSelectedGalleryRoom() {
   const selectedRoomId = galleryMapEditorState.selectedRoomId;
   if (!selectedRoomId) {
@@ -2964,7 +3497,8 @@ function applyCustomWallFromDrag(start: PlanPoint, end: PlanPoint) {
   }
   const heightCm = Math.max(100, Number(configMapWallHeightCm.value) || 300);
   const thicknessCm = Math.max(5, Number(configMapWallThicknessCm.value) || 16);
-  ensureCustomWallsArray().push({
+  const walls = ensureCustomWallsArray();
+  walls.push({
     id: `custom_wall_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
     x1,
     z1,
@@ -2980,6 +3514,7 @@ function applyCustomWallFromDrag(start: PlanPoint, end: PlanPoint) {
     thicknessCm,
     openings: [],
   });
+  setSelectedGalleryMapCustomWall(walls.length - 1);
   rebuildSceneFromConfig();
   renderGalleryMapEditor();
 }
@@ -3102,8 +3637,98 @@ function removeCustomWallAtPoint(point: PlanPoint) {
     return;
   }
   walls.splice(nearestWall.wall.wallIndex, 1);
+  setSelectedGalleryMapCustomWall(null);
   rebuildSceneFromConfig();
   renderGalleryMapEditor();
+}
+
+function deleteSelectedGalleryLight() {
+  const selectedId = galleryMapEditorState.selectedLightId;
+  if (!selectedId) {
+    return false;
+  }
+  const lights = ensureGalleryLightsArray();
+  const index = lights.findIndex((light) => light.id === selectedId);
+  if (index < 0) {
+    setSelectedGalleryMapLight(null);
+    return false;
+  }
+  lights.splice(index, 1);
+  setSelectedGalleryMapLight(null);
+  rebuildSceneFromConfig();
+  renderGalleryMapEditor();
+  return true;
+}
+
+function deleteSelectedGalleryOpening() {
+  const selected = galleryMapEditorState.selectedOpening;
+  if (!selected) {
+    return false;
+  }
+  if (selected.kind === "room") {
+    const room = config.rooms.find((candidate) => candidate.id === selected.roomId);
+    if (!room || !Array.isArray(room.openings) || selected.openingIndex < 0 || selected.openingIndex >= room.openings.length) {
+      setSelectedGalleryMapOpening(null);
+      return false;
+    }
+    const [removedOpening] = room.openings.splice(selected.openingIndex, 1);
+    if (removedOpening) {
+      removeMirroredOpeningOnAdjacentRooms(room, selected.wall, removedOpening);
+    }
+  } else {
+    const wall = ensureCustomWallsArray()[selected.wallIndex];
+    if (!wall || !Array.isArray(wall.openings) || selected.openingIndex < 0 || selected.openingIndex >= wall.openings.length) {
+      setSelectedGalleryMapOpening(null);
+      return false;
+    }
+    wall.openings.splice(selected.openingIndex, 1);
+  }
+  setSelectedGalleryMapOpening(null);
+  rebuildSceneFromConfig();
+  renderGalleryMapEditor();
+  return true;
+}
+
+function deleteSelectedPaintingFromMap() {
+  const selectedPaintingId = uiState.selectedPaintingId;
+  if (!selectedPaintingId) {
+    return false;
+  }
+  const entry = paintingRegistry.get(selectedPaintingId);
+  if (!entry) {
+    return false;
+  }
+  deletePaintingEntry(entry);
+  renderFilmstrip();
+  renderGalleryMapEditor();
+  return true;
+}
+
+function deleteSelectedElementFromGalleryMap() {
+  if (deleteSelectedGalleryOpening()) {
+    return true;
+  }
+  if (deleteSelectedGalleryLight()) {
+    return true;
+  }
+  if (deleteSelectedPaintingFromMap()) {
+    return true;
+  }
+  if (galleryMapEditorState.selectedCustomWallIndex != null) {
+    const walls = ensureCustomWallsArray();
+    if (galleryMapEditorState.selectedCustomWallIndex >= 0 && galleryMapEditorState.selectedCustomWallIndex < walls.length) {
+      walls.splice(galleryMapEditorState.selectedCustomWallIndex, 1);
+      setSelectedGalleryMapCustomWall(null);
+      rebuildSceneFromConfig();
+      renderGalleryMapEditor();
+      return true;
+    }
+  }
+  if (galleryMapEditorState.selectedRoomId) {
+    deleteSelectedGalleryRoom();
+    return true;
+  }
+  return false;
 }
 
 function setActiveGalleryMapTool(tool: GalleryMapTool) {
@@ -3111,6 +3736,10 @@ function setActiveGalleryMapTool(tool: GalleryMapTool) {
   if (tool !== "opening") {
     setSelectedGalleryMapOpening(null);
     galleryMapEditorState.resizingOpening = null;
+  }
+  if (tool !== "wall") {
+    galleryMapEditorState.selectedCustomWallIndex = null;
+    galleryMapEditorState.resizingWall = null;
   }
   configMapToolButtons.forEach((button) => {
     const active = button.dataset.mapTool === tool;
@@ -3127,8 +3756,16 @@ function syncGalleryMapAssistToggles() {
   configMapToggleMagnetBtn.setAttribute("aria-pressed", magnetActive ? "true" : "false");
 }
 
+function resetGalleryMapView() {
+  galleryMapEditorState.viewZoom = 1;
+  galleryMapEditorState.viewPanX = 0;
+  galleryMapEditorState.viewPanZ = 0;
+  galleryMapEditorState.panning = null;
+  renderGalleryMapEditor();
+}
+
 function attachGalleryMapEditor() {
-  configMapDeleteRoomBtn.addEventListener("click", () => {
+  configMapDeleteRoomBtn?.addEventListener("click", () => {
     deleteSelectedGalleryRoom();
   });
 
@@ -3153,9 +3790,12 @@ function attachGalleryMapEditor() {
     renderGalleryMapEditor();
   });
 
+  configMapResetViewBtn.addEventListener("click", () => {
+    resetGalleryMapView();
+  });
+
   const onPointerDown = (event: PointerEvent) => {
     event.preventDefault();
-    const cameraTabActive = isGalleryMapSubTabActive("camera");
     const wantsPan = event.button === 1 || event.button === 2 || (event.button === 0 && event.altKey);
     if (wantsPan) {
       galleryMapEditorState.panning = {
@@ -3175,6 +3815,106 @@ function attachGalleryMapEditor() {
     if (event.button !== 0) {
       return;
     }
+    const lightHandleTarget = (event.target as Element | null)?.closest<SVGElement>("[data-gallery-light-handle]");
+    const lightHandle = lightHandleTarget?.getAttribute("data-gallery-light-handle");
+    const lightHandleId = lightHandleTarget?.getAttribute("data-gallery-light-id");
+    if (lightHandleId && (lightHandle === "source" || lightHandle === "target")) {
+      setActiveGalleryMapSubTab("lights");
+      setSelectedGalleryMapLight(lightHandleId);
+      if (galleryMapEditorState.tool !== "light") {
+        renderGalleryMapEditor();
+        return;
+      }
+      const selectedLight = ensureGalleryLightsArray().find((candidate) => candidate.id === lightHandleId);
+      if (selectedLight) {
+        const rawPoint = getPlanPointFromEditorEvent(event);
+        galleryMapEditorState.dragAction = lightHandle === "source" ? "moveLight" : "moveLightTarget";
+        galleryMapEditorState.movingLight =
+          lightHandle === "source"
+            ? {
+                lightId: lightHandleId,
+                startPointer: rawPoint,
+                startX: Number(selectedLight.x ?? 0),
+                startZ: Number(selectedLight.z ?? 0),
+              }
+            : null;
+        galleryMapEditorState.movingLightTarget =
+          lightHandle === "target"
+            ? {
+                lightId: lightHandleId,
+                startPointer: rawPoint,
+                startX: Number(selectedLight.targetX ?? 0),
+                startZ: Number(selectedLight.targetZ ?? 0),
+              }
+            : null;
+        galleryMapEditorState.movingRoom = null;
+        galleryMapEditorState.resizingRoom = null;
+        galleryMapEditorState.resizingWall = null;
+        galleryMapEditorState.resizingOpening = null;
+        galleryMapEditorState.movingPainting = null;
+        galleryMapEditorState.dragStart = rawPoint;
+        galleryMapEditorState.dragCurrent = rawPoint;
+        galleryMapEditorState.panning = null;
+        configGalleryMapEditor.setPointerCapture(event.pointerId);
+      }
+      renderGalleryMapEditor();
+      return;
+    }
+    const lightTarget = (event.target as Element | null)?.closest<SVGElement>("[data-gallery-light-id]");
+    const lightId = lightTarget?.getAttribute("data-gallery-light-id");
+    if (lightId) {
+      setActiveGalleryMapSubTab("lights");
+      setSelectedGalleryMapLight(lightId);
+      renderGalleryMapEditor();
+      if (galleryMapEditorState.tool !== "light") {
+        return;
+      }
+    }
+    const openingHandleTarget = (event.target as Element | null)?.closest<SVGElement>("[data-opening-handle-side]");
+    const openingHandleSide = openingHandleTarget?.getAttribute("data-opening-handle-side");
+    const openingSelectTarget = (event.target as Element | null)?.closest<SVGElement>("[data-opening-select]");
+    if (openingSelectTarget && !(galleryMapEditorState.tool === "opening" && (openingHandleSide === "start" || openingHandleSide === "end"))) {
+      const openingKind = openingSelectTarget.getAttribute("data-opening-kind");
+      let openingRef: GalleryMapOpeningRef | null = null;
+      if (openingKind === "room") {
+        const roomId = openingSelectTarget.getAttribute("data-opening-room-id") ?? "";
+        const wallRaw = openingSelectTarget.getAttribute("data-opening-wall");
+        const openingIndexRaw = Number(openingSelectTarget.getAttribute("data-opening-index"));
+        const wall = toWallSide(wallRaw);
+        if (roomId && wall && Number.isInteger(openingIndexRaw) && openingIndexRaw >= 0) {
+          openingRef = { kind: "room", roomId, wall, openingIndex: openingIndexRaw };
+        }
+      } else if (openingKind === "custom") {
+        const wallIndexRaw = Number(openingSelectTarget.getAttribute("data-opening-wall-index"));
+        const openingIndexRaw = Number(openingSelectTarget.getAttribute("data-opening-index"));
+        if (Number.isInteger(wallIndexRaw) && wallIndexRaw >= 0 && Number.isInteger(openingIndexRaw) && openingIndexRaw >= 0) {
+          openingRef = { kind: "customWall", wallIndex: wallIndexRaw, openingIndex: openingIndexRaw };
+        }
+      }
+      if (openingRef) {
+        setActiveGalleryMapSubTab("opening");
+        if (galleryMapEditorState.tool !== "opening") {
+          setActiveGalleryMapTool("opening");
+        }
+        if (openingRef.kind === "room") {
+          setSelectedGalleryMapRoom(openingRef.roomId);
+        } else {
+          setSelectedGalleryMapCustomWall(openingRef.wallIndex);
+        }
+        setSelectedGalleryMapOpening(openingRef);
+        renderGalleryMapEditor();
+      }
+      if (galleryMapEditorState.tool !== "opening") {
+        return;
+      }
+    }
+    const roomRectTarget = (event.target as Element | null)?.closest<SVGElement>("[data-room-id]");
+    const roomRectId = roomRectTarget?.getAttribute("data-room-id");
+    if (roomRectId && galleryMapEditorState.tool === "room") {
+      setActiveGalleryMapSubTab("room");
+      setSelectedGalleryMapRoom(roomRectId);
+      renderGalleryMapEditor();
+    }
     const handleTarget = (event.target as Element | null)?.closest<SVGElement>("[data-room-handle-room-id]");
     const handleRoomId = handleTarget?.getAttribute("data-room-handle-room-id");
     const handleCornerRaw = handleTarget?.getAttribute("data-room-handle-corner");
@@ -3189,6 +3929,7 @@ function attachGalleryMapEditor() {
         setSelectedGalleryMapRoom(room.id);
         galleryMapEditorState.dragAction = "resizeRoom";
         galleryMapEditorState.movingLight = null;
+        galleryMapEditorState.movingLightTarget = null;
         galleryMapEditorState.movingRoom = null;
         galleryMapEditorState.resizingOpening = null;
         galleryMapEditorState.resizingRoom = {
@@ -3207,19 +3948,76 @@ function attachGalleryMapEditor() {
       }
       return;
     }
+    const customWallHandleTarget = (event.target as Element | null)?.closest<SVGElement>("[data-custom-wall-handle-side]");
+    const customWallHandleSide = customWallHandleTarget?.getAttribute("data-custom-wall-handle-side");
+    const customWallIndexRaw = Number(customWallHandleTarget?.getAttribute("data-custom-wall-index"));
+    if (
+      galleryMapEditorState.tool === "wall" &&
+      (customWallHandleSide === "start" || customWallHandleSide === "end") &&
+      Number.isInteger(customWallIndexRaw) &&
+      customWallIndexRaw >= 0
+    ) {
+      const wall = ensureCustomWallsArray()[customWallIndexRaw];
+      if (wall) {
+        const rawPoint = getPlanPointFromEditorEvent(event);
+        setSelectedGalleryMapCustomWall(customWallIndexRaw);
+        galleryMapEditorState.dragAction = customWallHandleSide === "start" ? "resizeWallStart" : "resizeWallEnd";
+        galleryMapEditorState.movingLight = null;
+        galleryMapEditorState.movingLightTarget = null;
+        galleryMapEditorState.movingRoom = null;
+        galleryMapEditorState.resizingRoom = null;
+        galleryMapEditorState.resizingWall = {
+          wallIndex: customWallIndexRaw,
+          handle: customWallHandleSide,
+          startX1: Number(wall.x1 ?? 0),
+          startZ1: Number(wall.z1 ?? 0),
+          startX2: Number(wall.x2 ?? 0),
+          startZ2: Number(wall.z2 ?? 0),
+        };
+        galleryMapEditorState.resizingOpening = null;
+        galleryMapEditorState.movingPainting = null;
+        galleryMapEditorState.dragStart = rawPoint;
+        galleryMapEditorState.dragCurrent = rawPoint;
+        galleryMapEditorState.panning = null;
+        configGalleryMapEditor.setPointerCapture(event.pointerId);
+        renderGalleryMapEditor();
+      }
+      return;
+    }
     const markerTarget = (event.target as Element | null)?.closest<SVGElement>("[data-map-painting-id]");
     const markerPaintingId = markerTarget?.getAttribute("data-map-painting-id");
+    if (markerPaintingId && (galleryMapEditorState.tool === "wall" || galleryMapEditorState.tool === "room")) {
+      setActiveGalleryMapSubTab("room");
+      const rawPoint = getPlanPointFromEditorEvent(event);
+      galleryMapEditorState.dragAction = "movePaintingOnMap";
+      galleryMapEditorState.movingLight = null;
+      galleryMapEditorState.movingLightTarget = null;
+      galleryMapEditorState.movingRoom = null;
+      galleryMapEditorState.resizingRoom = null;
+      galleryMapEditorState.resizingWall = null;
+      galleryMapEditorState.resizingOpening = null;
+      galleryMapEditorState.movingPainting = { paintingId: markerPaintingId };
+      galleryMapEditorState.dragStart = rawPoint;
+      galleryMapEditorState.dragCurrent = rawPoint;
+      galleryMapEditorState.panning = null;
+      configGalleryMapEditor.setPointerCapture(event.pointerId);
+      renderGalleryMapEditor();
+      return;
+    }
     if (markerPaintingId) {
+      setActiveGalleryMapSubTab("room");
       event.preventDefault();
       focusPaintingFromGalleryMap(markerPaintingId);
       return;
     }
     const cameraHandleTarget = (event.target as Element | null)?.closest<SVGElement>("[data-camera-handle]");
     const cameraHandle = cameraHandleTarget?.getAttribute("data-camera-handle");
-    if (cameraTabActive && (cameraHandle === "start" || cameraHandle === "target")) {
+    if (cameraHandle === "start" || cameraHandle === "target") {
+      setActiveGalleryMapSubTab("camera");
       const rawPoint = getPlanPointFromEditorEvent(event);
       galleryMapEditorState.dragAction = cameraHandle === "start" ? "moveCameraStart" : "moveCameraTarget";
       galleryMapEditorState.movingLight = null;
+      galleryMapEditorState.movingLightTarget = null;
       galleryMapEditorState.movingRoom = null;
       galleryMapEditorState.resizingOpening = null;
       galleryMapEditorState.resizingRoom = null;
@@ -3230,11 +4028,6 @@ function attachGalleryMapEditor() {
       renderGalleryMapEditor();
       return;
     }
-    if (cameraTabActive) {
-      return;
-    }
-    const openingHandleTarget = (event.target as Element | null)?.closest<SVGElement>("[data-opening-handle-side]");
-    const openingHandleSide = openingHandleTarget?.getAttribute("data-opening-handle-side");
     if (galleryMapEditorState.tool === "opening" && (openingHandleSide === "start" || openingHandleSide === "end")) {
       const openingKind = openingHandleTarget?.getAttribute("data-opening-kind");
       let openingRef: GalleryMapOpeningRef | null = null;
@@ -3273,6 +4066,7 @@ function attachGalleryMapEditor() {
           const currentMetrics = computeOpeningAlongMetrics(geometry.center, geometry.width, geometry.wallLength);
           galleryMapEditorState.dragAction = openingHandleSide === "start" ? "resizeOpeningStart" : "resizeOpeningEnd";
           galleryMapEditorState.movingLight = null;
+          galleryMapEditorState.movingLightTarget = null;
           galleryMapEditorState.movingRoom = null;
           galleryMapEditorState.resizingRoom = null;
           galleryMapEditorState.resizingOpening = {
@@ -3312,6 +4106,23 @@ function attachGalleryMapEditor() {
       addOpeningAtPoint(openingPoint);
       return;
     }
+    const customWallTarget = (event.target as Element | null)?.closest<SVGElement>("[data-custom-wall-index]");
+    const customWallLineIndexRaw = Number(customWallTarget?.getAttribute("data-custom-wall-index"));
+    if (
+      galleryMapEditorState.tool !== "light" &&
+      Number.isInteger(customWallLineIndexRaw) &&
+      customWallLineIndexRaw >= 0 &&
+      !Number.isNaN(customWallLineIndexRaw)
+    ) {
+      const wasWallTool = galleryMapEditorState.tool === "wall";
+      setActiveGalleryMapSubTab("wall");
+      setSelectedGalleryMapCustomWall(customWallLineIndexRaw);
+      if (!wasWallTool) {
+        setActiveGalleryMapTool("wall");
+      }
+      renderGalleryMapEditor();
+      return;
+    }
     if (galleryMapEditorState.tool === "delete-opening") {
       galleryMapEditorState.resizingOpening = null;
       removeOpeningAtPoint(applyPlanPointAssist(rawPoint, "opening"));
@@ -3335,6 +4146,7 @@ function attachGalleryMapEditor() {
           startX: Number(nearest.light.x ?? 0),
           startZ: Number(nearest.light.z ?? 0),
         };
+        galleryMapEditorState.movingLightTarget = null;
         galleryMapEditorState.resizingOpening = null;
         galleryMapEditorState.resizingRoom = null;
         galleryMapEditorState.dragStart = rawPoint;
@@ -3359,6 +4171,7 @@ function attachGalleryMapEditor() {
         setSelectedGalleryMapRoom(clickedRoom.id);
         galleryMapEditorState.dragAction = "moveRoom";
         galleryMapEditorState.movingLight = null;
+        galleryMapEditorState.movingLightTarget = null;
         galleryMapEditorState.resizingOpening = null;
         galleryMapEditorState.resizingRoom = null;
         galleryMapEditorState.movingRoom = {
@@ -3377,16 +4190,21 @@ function attachGalleryMapEditor() {
       setSelectedGalleryMapRoom(null);
       galleryMapEditorState.dragAction = "createRoom";
       galleryMapEditorState.movingLight = null;
+      galleryMapEditorState.movingLightTarget = null;
       galleryMapEditorState.resizingOpening = null;
       galleryMapEditorState.resizingRoom = null;
       const start = applyPlanPointAssist(rawPoint, "room-create");
       galleryMapEditorState.dragStart = start;
       galleryMapEditorState.dragCurrent = start;
     } else {
+      setSelectedGalleryMapCustomWall(null);
       galleryMapEditorState.dragAction = "createWall";
       galleryMapEditorState.movingLight = null;
+      galleryMapEditorState.movingLightTarget = null;
       galleryMapEditorState.resizingOpening = null;
       galleryMapEditorState.resizingRoom = null;
+      galleryMapEditorState.resizingWall = null;
+      galleryMapEditorState.movingPainting = null;
       const start = applyPlanPointAssist(rawPoint, "wall-create");
       galleryMapEditorState.dragStart = start;
       galleryMapEditorState.dragCurrent = start;
@@ -3428,6 +4246,16 @@ function attachGalleryMapEditor() {
       renderGalleryMapEditor();
       return;
     }
+    if (galleryMapEditorState.dragAction === "resizeWallStart" || galleryMapEditorState.dragAction === "resizeWallEnd") {
+      galleryMapEditorState.dragCurrent = rawPoint;
+      renderGalleryMapEditor();
+      return;
+    }
+    if (galleryMapEditorState.dragAction === "movePaintingOnMap") {
+      galleryMapEditorState.dragCurrent = rawPoint;
+      renderGalleryMapEditor();
+      return;
+    }
     if (galleryMapEditorState.dragAction === "createRoom") {
       galleryMapEditorState.dragCurrent = applyPlanPointAssist(rawPoint, "room-create", {
         anchor: galleryMapEditorState.dragStart,
@@ -3458,18 +4286,33 @@ function attachGalleryMapEditor() {
     event.preventDefault();
     const start = galleryMapEditorState.dragStart;
     const rawEnd = getPlanPointFromEditorEvent(event);
+    const dragDistance = Math.hypot(rawEnd.x - start.x, rawEnd.z - start.z);
     if (galleryMapEditorState.dragAction === "createRoom") {
-      const end = applyPlanPointAssist(rawEnd, "room-create", { anchor: start });
-      applyRoomFromDrag(start, end);
+      if (dragDistance < GALLERY_GRID_SNAP_M * 0.6) {
+        moveVisitorToPlanPointFromMap(rawEnd);
+      } else {
+        const end = applyPlanPointAssist(rawEnd, "room-create", { anchor: start });
+        applyRoomFromDrag(start, end);
+      }
     } else if (galleryMapEditorState.dragAction === "createWall") {
-      const end = applyPlanPointAssist(rawEnd, "wall-create", { anchor: start });
-      applyCustomWallFromDrag(start, end);
+      if (dragDistance < GALLERY_GRID_SNAP_M * 0.6) {
+        moveVisitorToPlanPointFromMap(rawEnd);
+      } else {
+        const end = applyPlanPointAssist(rawEnd, "wall-create", { anchor: start });
+        applyCustomWallFromDrag(start, end);
+      }
     } else if (galleryMapEditorState.dragAction === "moveRoom") {
       applyRoomMoveFromDrag(rawEnd);
     } else if (galleryMapEditorState.dragAction === "resizeRoom") {
       applyRoomResizeFromDrag(rawEnd);
     } else if (galleryMapEditorState.dragAction === "moveLight") {
       applyGalleryLightMoveFromDrag(rawEnd);
+    } else if (galleryMapEditorState.dragAction === "moveLightTarget") {
+      applyGalleryLightTargetMoveFromDrag(rawEnd);
+    } else if (galleryMapEditorState.dragAction === "movePaintingOnMap") {
+      applyPaintingMoveFromMapDrag(rawEnd);
+    } else if (galleryMapEditorState.dragAction === "resizeWallStart" || galleryMapEditorState.dragAction === "resizeWallEnd") {
+      applyCustomWallResizeFromDrag(rawEnd);
     } else if (galleryMapEditorState.dragAction === "resizeOpeningStart" || galleryMapEditorState.dragAction === "resizeOpeningEnd") {
       applyOpeningResizeFromDrag(rawEnd);
     } else if (galleryMapEditorState.dragAction === "moveCameraStart") {
@@ -3485,7 +4328,10 @@ function attachGalleryMapEditor() {
     galleryMapEditorState.dragCurrent = null;
     galleryMapEditorState.movingRoom = null;
     galleryMapEditorState.resizingRoom = null;
+    galleryMapEditorState.resizingWall = null;
+    galleryMapEditorState.movingPainting = null;
     galleryMapEditorState.movingLight = null;
+    galleryMapEditorState.movingLightTarget = null;
     galleryMapEditorState.resizingOpening = null;
     galleryMapEditorState.panning = null;
     renderGalleryMapEditor();
@@ -3513,10 +4359,38 @@ function attachGalleryMapEditor() {
     renderGalleryMapEditor();
   };
 
+  const isEditingTextInput = (target: EventTarget | null) => {
+    const el = target as HTMLElement | null;
+    if (!el) {
+      return false;
+    }
+    const tag = el.tagName?.toLowerCase();
+    if (tag === "input" || tag === "textarea" || tag === "select") {
+      return true;
+    }
+    return el.isContentEditable;
+  };
+
+  const onWindowKeyDown = (event: KeyboardEvent) => {
+    if (event.key !== "Delete" && event.key !== "Backspace") {
+      return;
+    }
+    if (isEditingTextInput(event.target)) {
+      return;
+    }
+    if (!isConfigTabActive("gallery-map")) {
+      return;
+    }
+    if (deleteSelectedElementFromGalleryMap()) {
+      event.preventDefault();
+    }
+  };
+
   configGalleryMapEditor.addEventListener("pointerdown", onPointerDown);
   configGalleryMapEditor.addEventListener("pointermove", onPointerMove);
   configGalleryMapEditor.addEventListener("pointerup", onPointerUp);
   configGalleryMapEditor.addEventListener("wheel", onWheel, { passive: false });
+  window.addEventListener("keydown", onWindowKeyDown);
   configGalleryMapEditor.addEventListener("contextmenu", (event) => {
     event.preventDefault();
   });
@@ -3529,7 +4403,10 @@ function attachGalleryMapEditor() {
     galleryMapEditorState.dragCurrent = null;
     galleryMapEditorState.movingRoom = null;
     galleryMapEditorState.resizingRoom = null;
+    galleryMapEditorState.resizingWall = null;
+    galleryMapEditorState.movingPainting = null;
     galleryMapEditorState.movingLight = null;
+    galleryMapEditorState.movingLightTarget = null;
     galleryMapEditorState.resizingOpening = null;
     galleryMapEditorState.panning = null;
     renderGalleryMapEditor();
@@ -4028,39 +4905,38 @@ function ensureConfigLeafletMap() {
 }
 
 function setActiveGalleryMapSubTab(tabId: string) {
+  const normalizedTab = tabId === "editor" ? "room" : tabId;
   configGalleryMapSubTabButtons.forEach((button) => {
-    const selected = button.dataset.galleryMapSubtab === tabId;
+    const selected = button.dataset.galleryMapSubtab === normalizedTab;
     button.classList.toggle("active", selected);
     button.setAttribute("aria-selected", selected ? "true" : "false");
   });
   configGalleryMapSubTabPanels.forEach((panel) => {
-    const selected = panel.dataset.galleryMapSubtabPanel === tabId;
+    const panelId = panel.dataset.galleryMapSubtabPanel ?? "";
+    const selected = panelId === normalizedTab;
     panel.classList.toggle("active", selected);
     panel.hidden = !selected;
   });
-  if (tabId === "lights") {
+  if (normalizedTab === "lights") {
     syncGalleryLightTargetOptions();
     syncSelectedGalleryLightControls();
-    if (galleryMapEditorState.tool !== "light" && galleryMapEditorState.tool !== "delete-light") {
+    if (galleryMapEditorState.tool !== "light") {
       setActiveGalleryMapTool("light");
     }
   }
-  if (tabId === "editor") {
-    if (galleryMapEditorState.tool === "light" || galleryMapEditorState.tool === "delete-light") {
-      setActiveGalleryMapTool("room");
-    }
-    window.setTimeout(() => {
-      renderGalleryMapEditor();
-    }, 0);
-  } else if (tabId === "camera") {
-    window.setTimeout(() => {
-      renderGalleryMapEditor();
-    }, 0);
-  } else if (tabId === "lights") {
-    window.setTimeout(() => {
-      renderGalleryMapEditor();
-    }, 0);
+  if (normalizedTab === "room" && galleryMapEditorState.tool !== "room") {
+    setActiveGalleryMapTool("room");
+  } else if (normalizedTab === "wall" && galleryMapEditorState.tool !== "wall") {
+    setActiveGalleryMapTool("wall");
+  } else if (normalizedTab === "opening" && galleryMapEditorState.tool !== "opening") {
+    setActiveGalleryMapTool("opening");
   }
+  if (normalizedTab !== "lights" && galleryMapEditorState.tool === "light") {
+    setActiveGalleryMapTool("room");
+  }
+  window.setTimeout(() => {
+    renderGalleryMapEditor();
+  }, 0);
 }
 
 function setActiveConfigTab(tabId: string) {
@@ -4103,6 +4979,24 @@ function syncConfigPanelFromConfig() {
   const rendering = ensureRenderingConfig();
   configMapFloorColor.value = normalizeColorInputValue(rendering.floorColor, "#c7c7c7");
   configMapWallColor.value = normalizeColorInputValue(rendering.wallColor, "#ffffff");
+  const firstRoomHeightCm = Number(config.rooms[0]?.heightCm ?? Number(config.rooms[0]?.height ?? 3) * CM_PER_M);
+  const firstCustomWallThicknessCm = Number(
+    ensureCustomWallsArray()[0]?.thicknessCm ??
+      Number(ensureCustomWallsArray()[0]?.thickness ?? rendering.wallThickness ?? 0.16) * CM_PER_M
+  );
+  const firstOpening =
+    config.rooms.flatMap((room) => room.openings ?? [])[0] ??
+    ensureCustomWallsArray().flatMap((wall) => wall.openings ?? [])[0] ??
+    null;
+  configMapWallHeightCm.value = String(Math.round(clampNumber(firstRoomHeightCm || 300, 100, 1000)));
+  configMapWallThicknessCm.value = String(Math.round(clampNumber(firstCustomWallThicknessCm || 16, 5, 200)));
+  configMapWallHeightCmWall.value = configMapWallHeightCm.value;
+  configMapWallThicknessCmWall.value = configMapWallThicknessCm.value;
+  configMapOpeningType.value = resolveOpeningType(firstOpening ?? {});
+  configMapOpeningWidthCm.value = String(Math.round(getOpeningWidthM(firstOpening ?? {}) * CM_PER_M || 120));
+  configMapOpeningBaseCm.value = String(Math.round(getOpeningBaseM(firstOpening ?? {}) * CM_PER_M || 0));
+  configMapOpeningHeightCm.value = String(Math.round(getOpeningHeightM(firstOpening ?? {}) * CM_PER_M || 220));
+  syncSelectedOpeningControls();
   const configuredMinPaintingDistance = Number(config.visitor?.minPaintingDistance);
   const minPaintingDistance = clampNumber(
     Number.isFinite(configuredMinPaintingDistance) ? configuredMinPaintingDistance : visitor.minPaintingDistance,
@@ -4237,6 +5131,14 @@ function attachConfigPanel() {
   configMapWallColor.addEventListener("input", scheduleRenderingColorsFromInputs);
   configMapFloorColor.addEventListener("change", applyRenderingColorsFromInputs);
   configMapWallColor.addEventListener("change", applyRenderingColorsFromInputs);
+  configMapWallHeightCm.addEventListener("change", () => applyGlobalWallParamsFromInputs("room"));
+  configMapWallThicknessCm.addEventListener("change", () => applyGlobalWallParamsFromInputs("room"));
+  configMapWallHeightCmWall.addEventListener("change", () => applyGlobalWallParamsFromInputs("wall"));
+  configMapWallThicknessCmWall.addEventListener("change", () => applyGlobalWallParamsFromInputs("wall"));
+  configMapOpeningType.addEventListener("change", applySelectedOpeningParamsFromInputs);
+  configMapOpeningWidthCm.addEventListener("change", applySelectedOpeningParamsFromInputs);
+  configMapOpeningBaseCm.addEventListener("change", applySelectedOpeningParamsFromInputs);
+  configMapOpeningHeightCm.addEventListener("change", applySelectedOpeningParamsFromInputs);
   configMapMinPaintingDistanceM.addEventListener("change", () => {
     const parsed = Number(configMapMinPaintingDistanceM.value);
     const next = clampNumber(Number.isFinite(parsed) ? parsed : visitor.minPaintingDistance, 0.2, 5);
@@ -4313,7 +5215,7 @@ function attachConfigPanel() {
   configMapLightAngleDeg.addEventListener("change", onGalleryLightParamsChanged);
   configMapLightDistanceM.addEventListener("change", onGalleryLightParamsChanged);
   configMapLightPenumbra.addEventListener("change", onGalleryLightParamsChanged);
-  setActiveGalleryMapSubTab("editor");
+  setActiveGalleryMapSubTab("room");
   setActiveConfigTab("intro");
 }
 

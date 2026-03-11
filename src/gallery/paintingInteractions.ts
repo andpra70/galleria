@@ -1,6 +1,6 @@
 import * as THREE_NS from "three";
 import type { AppContext } from "./appServices";
-import type { PaintingRegistryEntry, PaintingSpot, WallSide } from "./types";
+import type { CustomWallConfig, PaintingRegistryEntry, PaintingSpot, WallSide } from "./types";
 
 type PaintingInteractionsDeps = {
   app: AppContext;
@@ -62,6 +62,12 @@ export function createPaintingInteractions(deps: PaintingInteractionsDeps) {
   type RoomWallIntersection = THREE_NS.Intersection<THREE_NS.Object3D> & {
     object: THREE_NS.Object3D & { userData: { roomId?: string; wall?: WallSide } };
   };
+  type CustomWallIntersection = THREE_NS.Intersection<THREE_NS.Object3D> & {
+    object: THREE_NS.Object3D & { userData: { wallType?: string; customWallId?: string } };
+  };
+  type GalleryWallPlacementTarget =
+    | { kind: "room"; room: import("./types").GalleryRoom; wall: WallSide; point: THREE_NS.Vector3 }
+    | { kind: "custom"; customWall: CustomWallConfig; along: number; side: number; point: THREE_NS.Vector3 };
 
   function toWallSide(value: unknown): WallSide | null {
     if (value === "north" || value === "south" || value === "west" || value === "east") {
@@ -107,6 +113,71 @@ export function createPaintingInteractions(deps: PaintingInteractionsDeps) {
     return nearestHits[0];
   }
 
+  function findCustomWallById(customWallId?: string) {
+    const wallId = (customWallId ?? "").trim();
+    if (!wallId) {
+      return null;
+    }
+    const walls = getConfig().customWalls ?? [];
+    return walls.find((wall) => (wall.id ?? "").trim() === wallId) ?? null;
+  }
+
+  function projectPointToCustomWall(wall: CustomWallConfig, point: THREE_NS.Vector3) {
+    const x1 = Number(wall.x1 ?? 0);
+    const z1 = Number(wall.z1 ?? 0);
+    const x2 = Number(wall.x2 ?? 0);
+    const z2 = Number(wall.z2 ?? 0);
+    const dx = x2 - x1;
+    const dz = z2 - z1;
+    const lengthSq = dx * dx + dz * dz;
+    if (lengthSq <= 0.000001) {
+      return null;
+    }
+    const length = Math.sqrt(lengthSq);
+    const ux = dx / length;
+    const uz = dz / length;
+    const tRaw = ((point.x - x1) * dx + (point.z - z1) * dz) / lengthSq;
+    const t = THREE.MathUtils.clamp(tRaw, 0, 1);
+    const px = x1 + dx * t;
+    const pz = z1 + dz * t;
+    const perpX = -uz;
+    const perpZ = ux;
+    const signed = (point.x - px) * perpX + (point.z - pz) * perpZ;
+    return {
+      along: t * length,
+      side: signed >= 0 ? 1 : -1,
+    };
+  }
+
+  function getFirstGalleryWallHit(intersections: THREE_NS.Intersection<THREE_NS.Object3D>[]): GalleryWallPlacementTarget | null {
+    for (let i = 0; i < intersections.length; i += 1) {
+      const genericHit = intersections[i];
+      const roomHit = genericHit as RoomWallIntersection;
+      const roomId = roomHit.object?.userData?.roomId;
+      const roomWall = toWallSide(roomHit.object?.userData?.wall);
+      if (roomId && roomWall) {
+        const room = getRoomsById().get(roomId);
+        if (room) {
+          return { kind: "room", room, wall: roomWall, point: roomHit.point };
+        }
+      }
+      const customHit = genericHit as CustomWallIntersection;
+      if (customHit.object?.userData?.wallType !== "customSegment") {
+        continue;
+      }
+      const customWall = findCustomWallById(customHit.object.userData.customWallId);
+      if (!customWall) {
+        continue;
+      }
+      const projected = projectPointToCustomWall(customWall, customHit.point);
+      if (!projected) {
+        continue;
+      }
+      return { kind: "custom", customWall, along: projected.along, side: projected.side, point: customHit.point };
+    }
+    return null;
+  }
+
   function getCurrentVisitorRoomId() {
     const rooms = getConfig().rooms;
     const x = visitor.position.x;
@@ -132,9 +203,12 @@ export function createPaintingInteractions(deps: PaintingInteractionsDeps) {
   }
 
   function isPaintingVisibleForDrag(entry: PaintingRegistryEntry, visitorRoomId: string) {
+    const hasCustomWall = Boolean((entry.painting.customWallId ?? "").trim());
     const paintingRoomId = entry.painting.roomId ?? entry.room?.id ?? "";
-    if (!paintingRoomId || paintingRoomId !== visitorRoomId) {
-      return false;
+    if (!hasCustomWall) {
+      if (!paintingRoomId || paintingRoomId !== visitorRoomId) {
+        return false;
+      }
     }
     const toVisitor = visitor.position.clone().sub(entry.paintingSpot.center);
     const facingDepth = toVisitor.dot(entry.paintingSpot.normal);
@@ -239,21 +313,38 @@ export function createPaintingInteractions(deps: PaintingInteractionsDeps) {
 
     setPointerRay(clientX, clientY);
     const roomsById = getRoomsById();
-    const wallHit = getFirstRoomWallHit(raycaster.intersectObjects(wallMeshes, false));
+    const wallHit = getFirstGalleryWallHit(raycaster.intersectObjects(wallMeshes, false));
     if (wallHit) {
-      const nextRoom = roomsById.get(wallHit.object.userData.roomId ?? "");
-      const nextWall = toWallSide(wallHit.object.userData.wall);
-      if (nextRoom && nextWall) {
+      if (wallHit.kind === "room") {
+        const nextRoom = wallHit.room;
+        const nextWall = wallHit.wall;
         entry.room = nextRoom;
         entry.painting.roomId = nextRoom.id;
         entry.painting.wall = nextWall;
+        entry.painting.customWallId = undefined;
+        entry.painting.customWallOffset = undefined;
+        entry.painting.customWallOffsetCm = undefined;
+        entry.painting.customWallSide = undefined;
         const rawOffset = nextWall === "north" || nextWall === "south" ? wallHit.point.x - nextRoom.x : wallHit.point.z - nextRoom.z;
         entry.painting.offset = clampPaintingOffset(entry, snapToStep(rawOffset, PAINTING_SNAP_M));
+        entry.painting.centerY = clampPaintingCenterY(entry, snapToStep(wallHit.point.y, PAINTING_SNAP_M));
+      } else {
+        const customWall = wallHit.customWall;
+        entry.room = undefined;
+        entry.painting.roomId = "";
+        entry.painting.customWallId = customWall.id ?? "";
+        entry.painting.customWallOffset = wallHit.along;
+        entry.painting.customWallOffsetCm = Math.round(wallHit.along * 100);
+        entry.painting.customWallSide = wallHit.side;
+        entry.painting.offset = clampPaintingOffset(entry, snapToStep(wallHit.along, PAINTING_SNAP_M));
         entry.painting.centerY = clampPaintingCenterY(entry, snapToStep(wallHit.point.y, PAINTING_SNAP_M));
       }
     } else {
       const point = new THREE.Vector3();
       if (!raycaster.ray.intersectPlane(dragPainting.plane, point)) {
+        return;
+      }
+      if ((entry.painting.customWallId ?? "").trim()) {
         return;
       }
       const room = entry.room ?? roomsById.get(entry.painting.roomId ?? "");
@@ -288,17 +379,29 @@ export function createPaintingInteractions(deps: PaintingInteractionsDeps) {
       return false;
     }
     onPaintingPicked?.(hit.id);
-
-    if (isNearPainting(hit)) {
+    closePaintingCard();
+    let viewPos: THREE_NS.Vector3 | null = null;
+    for (let extra = 0; extra <= 1.2; extra += 0.1) {
+      const tryPos = hit.center
+        .clone()
+        .add(hit.normal.clone().multiplyScalar(visitor.minPaintingDistance + extra))
+        .setY(visitor.eyeHeight);
+      const clamped = clampToWalkable(tryPos);
+      if (clamped) {
+        viewPos = clamped;
+        break;
+      }
+    }
+    if (!viewPos && isNearPainting(hit)) {
       movement.route = [];
       movement.destination = null;
       movement.finalDestination = null;
       movement.focusTarget = hit.center.clone();
       return true;
     }
-
-    closePaintingCard();
-    const viewPos = computePaintingViewPosition(hit);
+    if (!viewPos) {
+      viewPos = computePaintingViewPosition(hit);
+    }
     if (!viewPos) {
       return false;
     }

@@ -27,12 +27,13 @@ type WorldBuilderDeps = {
   wallMeshes: GalleryWallMesh[];
   wallColliders: THREE_NS.Box3[];
   cmToM: (cm: number) => number;
+  getRoomWallThickness: () => number;
 };
 
 const WALL_MATCH_EPS = 0.001;
 const WALL_SEGMENT_EPS = 0.01;
 
-export function createWorldBuilder({ THREE, world, floorMeshes, wallMeshes, wallColliders, cmToM }: WorldBuilderDeps) {
+export function createWorldBuilder({ THREE, world, floorMeshes, wallMeshes, wallColliders, cmToM, getRoomWallThickness }: WorldBuilderDeps) {
   function cacheWallCollider(mesh: GalleryWallMesh): void {
     mesh.updateWorldMatrix(true, false);
     const box = new THREE.Box3().setFromObject(mesh);
@@ -285,7 +286,7 @@ export function createWorldBuilder({ THREE, world, floorMeshes, wallMeshes, wall
     allRooms: GalleryRoom[] = [room],
     roomOrderArg?: Map<string, number>
   ) {
-    const wallThickness = 0.16;
+    const wallThickness = Math.max(0.02, Number(getRoomWallThickness() || 0.16));
     const wallMaterial = new THREE.MeshStandardMaterial({ color: wallColor, roughness: 0.94, metalness: 0.02 });
 
     buildRoomFloorAndCeiling(room, ceilingColor, floorMaterial);
@@ -337,7 +338,7 @@ export function createWorldBuilder({ THREE, world, floorMeshes, wallMeshes, wall
     const dirZ = dz / length;
     const centerX = (x1 + x2) * 0.5;
     const centerZ = (z1 + z2) * 0.5;
-    const angleY = Math.atan2(dz, dx);
+    const angleY = -Math.atan2(dz, dx);
     const cuts = Array.isArray(segment.openings) ? segment.openings : [];
     const wallSegments: IntervalSegment[] = subtractIntervals(
       [{ from: 0, to: length, base: 0, top: height }],

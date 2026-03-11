@@ -29,6 +29,10 @@ export interface GalleryPainting {
   roomId?: string;
   wall?: WallSide | string;
   offset?: number;
+  customWallId?: string;
+  customWallOffset?: number;
+  customWallOffsetCm?: number;
+  customWallSide?: number;
   centerY?: number;
   widthCm?: number;
   heightCm?: number;
@@ -135,6 +139,8 @@ export interface RenderingConfig {
   wallColor?: string;
   ceilingColor?: string;
   floorColor?: string;
+  wallThickness?: number;
+  wallThicknessCm?: number;
   ambientLight?: number;
   diffuseAmbient?: number;
   cameraFov?: number;

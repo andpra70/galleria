@@ -128,7 +128,7 @@ export function createNavigationHelpers({ THREE, navGrid, mapState, visitor, isP
     }
   }
 
-  function computeRoute(startPoint: THREE_NS.Vector3, endPoint: THREE_NS.Vector3): THREE_NS.Vector3[] {
+  function computeRouteOnCurrentGrid(startPoint: THREE_NS.Vector3, endPoint: THREE_NS.Vector3): THREE_NS.Vector3[] {
     const startSafe = clampToWalkable(startPoint);
     const endSafe = clampToWalkable(endPoint);
     if (!startSafe || !endSafe) {
@@ -220,6 +220,26 @@ export function createNavigationHelpers({ THREE, navGrid, mapState, visitor, isP
     }
 
     return [];
+  }
+
+  function computeRoute(startPoint: THREE_NS.Vector3, endPoint: THREE_NS.Vector3): THREE_NS.Vector3[] {
+    const primary = computeRouteOnCurrentGrid(startPoint, endPoint);
+    if (primary.length) {
+      return primary;
+    }
+
+    const originalCellSize = navGrid.cellSize;
+    const fineCellSize = Math.max(0.14, Math.min(0.22, originalCellSize * 0.5));
+    if (fineCellSize >= originalCellSize - 0.0001) {
+      return primary;
+    }
+
+    navGrid.cellSize = fineCellSize;
+    buildNavGrid();
+    const fallback = computeRouteOnCurrentGrid(startPoint, endPoint);
+    navGrid.cellSize = originalCellSize;
+    buildNavGrid();
+    return fallback;
   }
 
   return {

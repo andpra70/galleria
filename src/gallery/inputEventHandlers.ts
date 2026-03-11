@@ -68,6 +68,18 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
   const { paintingPickMeshes, paintingRegistry } = app.collections;
   const { minimapClientToWorld } = app.helpers;
   const { clampToWalkable, moveVisitorTo, setPointerRay, placeCatalogPaintingAtWall, handleWallCreateClick, handleFloorMove } = actions;
+  const readWalkDebugFlag = () => {
+    try {
+      return (window as Window & { __walkDebug?: boolean }).__walkDebug === true || window.localStorage.getItem("walk_debug") === "1";
+    } catch {
+      return false;
+    }
+  };
+  const walkDebug = (...args: unknown[]) => {
+    if (readWalkDebugFlag()) {
+      console.debug("[walk]", ...args);
+    }
+  };
 
   function isCatalogPayload(value: unknown): boolean {
     if (!value || typeof value !== "object") {
@@ -230,6 +242,7 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
     if (paintingInteractions.handlePaintingClick(event.clientX, event.clientY)) {
       return;
     }
+    handleFloorMove(event.clientX, event.clientY);
   }
 
   function onDoubleClick(event: MouseEvent) {
@@ -519,13 +532,22 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
     }
     const pos = minimapClientToWorld(event.clientX, event.clientY, minimapCanvas, mapState);
     if (!pos) {
+      walkDebug("minimap click: invalid world pos", { clientX: event.clientX, clientY: event.clientY });
       return;
     }
     const target = new THREE.Vector3(pos.x, visitor.eyeHeight, pos.z);
     const clamped = clampToWalkable(target);
     if (!clamped) {
+      walkDebug("minimap click: target not walkable", {
+        x: Number(target.x.toFixed(3)),
+        z: Number(target.z.toFixed(3)),
+      });
       return;
     }
+    walkDebug("minimap click -> moveVisitorTo", {
+      x: Number(clamped.x.toFixed(3)),
+      z: Number(clamped.z.toFixed(3)),
+    });
     closePaintingCard();
     moveVisitorTo(clamped, null);
   }

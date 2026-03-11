@@ -3,25 +3,16 @@ import type { AppContext } from "./appServices";
 import { resolveAppUrl } from "./url";
 import type {
   GalleryPainting,
-  GalleryRoom,
   PaintingCanvasMesh,
   PaintingFrameMesh,
   PaintingHandleMesh,
   PaintingRegistryEntry,
   PaintingSpot,
-  WallSide,
 } from "./types";
 
 type PaintingBuilderDeps = {
   app: AppContext;
   placementOps: {
-    computeWallPlacement: (
-      room: GalleryRoom,
-      wall: WallSide,
-      offset: number,
-      centerY: number,
-      pushOut: number
-    ) => { position: THREE_NS.Vector3; quaternion: THREE_NS.Quaternion; normal: THREE_NS.Vector3 };
     applyPaintingPlacement: (entry: PaintingRegistryEntry) => void;
   };
   imageOps: {
@@ -49,7 +40,7 @@ export function createPaintingBuilder(deps: PaintingBuilderDeps) {
   const getDeleteHandleTexture = app.status.refs.getDeleteHandleTexture;
   const getMoveHandleTexture = app.status.refs.getMoveHandleTexture;
   const { inferPaintingDimensions, applyPaintingDimensions, applyPaintingImage } = imageOps;
-  const { computeWallPlacement, applyPaintingPlacement } = placementOps;
+  const { applyPaintingPlacement } = placementOps;
   const getLightOffset = (painting: GalleryPainting) => ({
     x: painting.lightOffset?.x ?? 0,
     y: painting.lightOffset?.y ?? 1.75,
@@ -66,7 +57,7 @@ export function createPaintingBuilder(deps: PaintingBuilderDeps) {
 
   return function buildPainting(painting: GalleryPainting) {
     const room = getRoomsById().get(painting.roomId ?? "");
-    if (!room) {
+    if (!room && !painting.customWallId) {
       return;
     }
     painting.placed = true;
@@ -116,36 +107,27 @@ export function createPaintingBuilder(deps: PaintingBuilderDeps) {
       new THREE.MeshStandardMaterial({ map: imageTexture, roughness: 0.75, metalness: 0.02, side: THREE.DoubleSide })
     ) as PaintingCanvasMesh;
 
-    const wallThickness = 0.16;
-    const transform = computeWallPlacement(
-      room,
-      (painting.wall ?? "north") as WallSide,
-      painting.offset ?? 0,
-      painting.centerY ?? 1.65,
-      wallThickness + frameDepth * 0.5 + 0.01
-    );
-
-    frame.position.copy(transform.position);
-    frame.quaternion.copy(transform.quaternion);
+    frame.position.set(0, 0, 0);
+    frame.quaternion.identity();
     frame.castShadow = true;
     frame.userData.paintingId = painting.id;
     world.add(frame);
 
-    canvas.position.copy(transform.position).add(transform.normal.clone().multiplyScalar(frameDepth * 0.51));
-    canvas.quaternion.copy(transform.quaternion);
+    canvas.position.set(0, 0, 0);
+    canvas.quaternion.identity();
     canvas.userData.paintingId = painting.id;
     world.add(canvas);
 
     const spot = new THREE.SpotLight("#ffffff", 0, 0, 0.4, 0, 1);
     applySpotLightConfig(spot, painting);
     const lightOffset = getLightOffset(painting);
-    const lightRight = new THREE.Vector3(1, 0, 0).applyQuaternion(transform.quaternion).normalize();
+    const lightRight = new THREE.Vector3(1, 0, 0);
     spot.position
-      .copy(transform.position)
+      .set(0, 0, 0)
       .add(lightRight.multiplyScalar(lightOffset.x))
       .add(new THREE.Vector3(0, lightOffset.y, 0))
-      .add(transform.normal.clone().multiplyScalar(lightOffset.z));
-    spot.target.position.copy(transform.position);
+      .add(new THREE.Vector3(0, 0, lightOffset.z));
+    spot.target.position.set(0, 0, 0);
     spot.castShadow = false;
     world.add(spot);
     world.add(spot.target);
@@ -174,8 +156,8 @@ export function createPaintingBuilder(deps: PaintingBuilderDeps) {
       description: painting.description ?? "",
       synopsis: painting.synopsis ?? {},
       image: resolveAppUrl(sourceImage || activeImage),
-      center: transform.position.clone(),
-      normal: transform.normal.clone(),
+      center: new THREE.Vector3(0, painting.centerY ?? 1.65, 0),
+      normal: new THREE.Vector3(0, 0, 1),
       width: initialDimensions.width,
       height: initialDimensions.height,
     };

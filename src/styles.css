@@ -514,6 +514,21 @@ body,
   color: #ffffff;
 }
 
+.config-map-subtab {
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 0.78rem;
+  background: rgba(15, 23, 42, 0.08);
+  color: #0f172a;
+  cursor: pointer;
+}
+
+.config-map-subtab.active {
+  background: #0f766e;
+  color: #ffffff;
+}
+
 #config-map-delete-room {
   border: 0;
   border-radius: 8px;
@@ -553,6 +568,12 @@ body,
   -webkit-user-select: none;
 }
 
+#config-gallery-map-inspector {
+  margin-top: 8px;
+  display: grid;
+  gap: 8px;
+}
+
 #config-gallery-map-editor * {
   user-select: none;
   -webkit-user-select: none;
@@ -570,6 +591,10 @@ body,
   pointer-events: none;
 }
 
+.gallery-map-light-handle {
+  cursor: grab;
+}
+
 .gallery-map-room-handle.corner-nw,
 .gallery-map-room-handle.corner-se {
   cursor: nwse-resize;
@@ -578,6 +603,25 @@ body,
 .gallery-map-room-handle.corner-ne,
 .gallery-map-room-handle.corner-sw {
   cursor: nesw-resize;
+}
+
+.gallery-map-custom-wall-line {
+  cursor: pointer;
+}
+
+.gallery-map-wall-handle {
+  fill: #f8fafc;
+  stroke: #7c2d12;
+  stroke-width: 2;
+  cursor: grab;
+}
+
+.gallery-map-wall-handle.start {
+  stroke: #9a3412;
+}
+
+.gallery-map-wall-handle.end {
+  stroke: #b45309;
 }
 
 .gallery-map-opening-handle {

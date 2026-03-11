@@ -207,6 +207,15 @@ export function createSceneConfigController(deps: SceneConfigControllerDeps) {
           light.decay = Math.max(0, Number(light.decay));
         }
       }
+      if (painting.customWallOffsetCm != null) {
+        painting.customWallOffset = cmToM(Number(painting.customWallOffsetCm));
+      } else if (painting.customWallOffset != null) {
+        painting.customWallOffsetCm = Math.round(mToCm(Number(painting.customWallOffset)));
+      }
+      if (painting.customWallSide != null) {
+        const side = Number(painting.customWallSide);
+        painting.customWallSide = side >= 0 ? 1 : -1;
+      }
     });
   }
 
@@ -337,6 +346,14 @@ export function createSceneConfigController(deps: SceneConfigControllerDeps) {
 
   function buildWorld(cfg: ShowConfig) {
     const renderCfg = cfg.rendering ?? {};
+    if (renderCfg.wallThicknessCm != null) {
+      renderCfg.wallThickness = cmToM(Number(renderCfg.wallThicknessCm));
+    } else if (renderCfg.wallThickness != null) {
+      renderCfg.wallThicknessCm = Math.round(mToCm(Number(renderCfg.wallThickness)));
+    } else {
+      renderCfg.wallThickness = cmToM(16);
+      renderCfg.wallThicknessCm = 16;
+    }
     if (Number.isFinite(renderCfg.cameraFov)) {
       camera.fov = Math.min(120, Math.max(20, Number(renderCfg.cameraFov)));
       camera.updateProjectionMatrix();
