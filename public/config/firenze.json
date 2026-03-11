@@ -1,0 +1,848 @@
+{
+  "visitor": {
+    "start": {
+      "x": -11.113,
+      "z": -2.894,
+      "yaw": 6.30499,
+      "y": 1.67,
+      "pitch": -0.03308,
+      "targetX": -11.1,
+      "targetY": 1.65,
+      "targetZ": -2.29
+    },
+    "eyeHeight": 1.67,
+    "moveSpeed": 2.3,
+    "initialSpeedScale": 1.45,
+    "wallClearance": 0.5,
+    "minPaintingDistance": 0.6,
+    "navCellSize": 0.4,
+    "pathTour": {
+      "keyframes": [
+        {
+          "x": -9.8,
+          "z": -4.6,
+          "xCm": -980,
+          "zCm": -460
+        },
+        {
+          "x": -11,
+          "z": -5,
+          "xCm": -1100,
+          "zCm": -500
+        },
+        {
+          "x": -13,
+          "z": -5.2,
+          "xCm": -1300,
+          "zCm": -520
+        },
+        {
+          "x": -13,
+          "z": -3.6,
+          "xCm": -1300,
+          "zCm": -360
+        },
+        {
+          "x": -12,
+          "z": -3.4,
+          "xCm": -1200,
+          "zCm": -340
+        },
+        {
+          "x": -10.8,
+          "z": -3.2,
+          "xCm": -1080,
+          "zCm": -320
+        },
+        {
+          "x": -11,
+          "z": -4,
+          "xCm": -1100,
+          "zCm": -400
+        },
+        {
+          "x": -14.8,
+          "z": -3,
+          "xCm": -1480,
+          "zCm": -300
+        },
+        {
+          "x": -15.6,
+          "z": -2.4,
+          "xCm": -1560,
+          "zCm": -240
+        },
+        {
+          "x": -17.4,
+          "z": -2.4,
+          "xCm": -1740,
+          "zCm": -240
+        },
+        {
+          "x": -17.6,
+          "z": -3,
+          "xCm": -1760,
+          "zCm": -300
+        },
+        {
+          "x": -17.8,
+          "z": -4.2,
+          "xCm": -1780,
+          "zCm": -420
+        },
+        {
+          "x": -17.6,
+          "z": -5,
+          "xCm": -1760,
+          "zCm": -500
+        },
+        {
+          "x": -16.2,
+          "z": -5.2,
+          "xCm": -1620,
+          "zCm": -520
+        },
+        {
+          "x": -15.6,
+          "z": -5.2,
+          "xCm": -1560,
+          "zCm": -520
+        },
+        {
+          "x": -15,
+          "z": -4.6,
+          "xCm": -1500,
+          "zCm": -460
+        },
+        {
+          "x": -13.6,
+          "z": -3.2,
+          "xCm": -1360,
+          "zCm": -320
+        },
+        {
+          "x": -12,
+          "z": -3,
+          "xCm": -1200,
+          "zCm": -300
+        }
+      ],
+      "walkSeconds": 2,
+      "stopOnPaintingSeconds": 1.5,
+      "cardSeconds": 2.5,
+      "openPaintingCard": false,
+      "autoTargetNearestPainting": true
+    }
+  },
+  "rendering": {
+    "ceilingColor": "#ffffff",
+    "wallColor": "#f2f2f2",
+    "floorColor": "#544046",
+    "ambientLight": 0.8,
+    "diffuseAmbient": 0.8,
+    "floorTexture": {
+      "map": "./assets/floor/parquet-light.svg",
+      "alphaMap": "./assets/floor/parquet-alpha.svg",
+      "repeatX": 2.5,
+      "repeatY": 2.5,
+      "roughness": 0.86,
+      "metalness": 0.03,
+      "alphaTest": 0,
+      "transparent": true
+    },
+    "defaultPaintingHeight": 1,
+    "cameraFov": 90,
+    "wallThickness": 0.1,
+    "wallThicknessCm": 10
+  },
+  "rooms": [
+    {
+      "id": "hall_a",
+      "name": "Sala A",
+      "x": -18.6,
+      "z": -6,
+      "width": 4.6,
+      "depth": 4.6,
+      "height": 2.8,
+      "openings": [
+        {
+          "id": "op_1773218639498_966",
+          "type": "door",
+          "wall": "west",
+          "center": 3.7,
+          "centerCm": 370,
+          "width": 0.6,
+          "widthCm": 60,
+          "base": 0,
+          "baseCm": 0,
+          "height": 1.9,
+          "heightCm": 190
+        },
+        {
+          "id": "op_1773226023735_516",
+          "type": "door",
+          "wall": "west",
+          "center": 1.1,
+          "centerCm": 110,
+          "width": 0.6,
+          "widthCm": 60,
+          "base": 0,
+          "baseCm": 0,
+          "height": 1.9,
+          "heightCm": 190
+        },
+        {
+          "id": "op_1773237254806_18",
+          "type": "door",
+          "wall": "east",
+          "center": 2.3,
+          "centerCm": 230,
+          "width": 2.6,
+          "widthCm": 260,
+          "base": 0,
+          "baseCm": 0,
+          "height": 2.2,
+          "heightCm": 220
+        }
+      ],
+      "widthCm": 460,
+      "depthCm": 460,
+      "heightCm": 280
+    },
+    {
+      "id": "hall_b",
+      "name": "Sala B",
+      "x": -14,
+      "z": -6,
+      "width": 4.8,
+      "depth": 4.6,
+      "height": 2.8,
+      "openings": [
+        {
+          "id": "op_1773218550215_485",
+          "type": "door",
+          "wall": "east",
+          "center": 1.7,
+          "centerCm": 170,
+          "width": 3,
+          "widthCm": 300,
+          "base": 0,
+          "baseCm": 0,
+          "height": 2.2,
+          "heightCm": 220
+        },
+        {
+          "id": "op_1773219524233_983",
+          "type": "door",
+          "wall": "west",
+          "center": 2.3,
+          "centerCm": 230,
+          "width": 2.6,
+          "widthCm": 260,
+          "base": 0,
+          "baseCm": 0,
+          "height": 2.2,
+          "heightCm": 220
+        }
+      ],
+      "widthCm": 480,
+      "depthCm": 460,
+      "heightCm": 280
+    },
+    {
+      "id": "room_1",
+      "name": "Stanza 3",
+      "x": -22.400000000000002,
+      "z": -6,
+      "width": 3.8,
+      "depth": 2.6,
+      "height": 2.8,
+      "widthCm": 380,
+      "depthCm": 260,
+      "heightCm": 280,
+      "openings": [
+        {
+          "id": "op_1773225991743_396",
+          "type": "door",
+          "wall": "west",
+          "center": 0.5,
+          "centerCm": 50,
+          "width": 0.6,
+          "widthCm": 60,
+          "base": 0,
+          "baseCm": 0,
+          "height": 2.2,
+          "heightCm": 220
+        },
+        {
+          "id": "op_1773226000439_242",
+          "type": "door",
+          "wall": "west",
+          "center": 1.9,
+          "centerCm": 190,
+          "width": 0.8,
+          "widthCm": 80,
+          "base": 0,
+          "baseCm": 0,
+          "height": 2.2,
+          "heightCm": 220
+        },
+        {
+          "id": "op_1773226060681_659",
+          "type": "door",
+          "wall": "east",
+          "center": 1.1,
+          "centerCm": 110,
+          "width": 0.6,
+          "widthCm": 60,
+          "base": 0,
+          "baseCm": 0,
+          "height": 1.9,
+          "heightCm": 190
+        }
+      ]
+    },
+    {
+      "id": "room_2",
+      "name": "Stanza 4",
+      "x": -22.400000000000002,
+      "z": -3.4000000000000004,
+      "width": 3.8,
+      "depth": 2,
+      "height": 2.8,
+      "widthCm": 380,
+      "depthCm": 200,
+      "heightCm": 280,
+      "openings": [
+        {
+          "id": "op_1773226056448_421",
+          "type": "door",
+          "wall": "east",
+          "center": 1.1,
+          "centerCm": 110,
+          "width": 0.6,
+          "widthCm": 60,
+          "base": 0,
+          "baseCm": 0,
+          "height": 1.9,
+          "heightCm": 190
+        }
+      ]
+    }
+  ],
+  "paintings": [
+    {
+      "id": "a_n_1",
+      "title": "Dinamica del Colore",
+      "description": "Composizione astratta con transizione cromatica intensa e profondita luminosa.",
+      "synopsis": {
+        "Artista": "Letizia Rostagno",
+        "Anno": "2023",
+        "Tecnica": "Fotografia"
+      },
+      "roomId": "hall_a",
+      "wall": "south",
+      "offset": 2.35,
+      "width": 1.5,
+      "height": 1.1,
+      "centerY": 1.7000000000000002,
+      "image": "./assets/art/1.jpg",
+      "scale": 1.1,
+      "widthCm": 50,
+      "heightCm": 89,
+      "lightOffset": {
+        "x": 0,
+        "y": 1.75,
+        "z": 0.9,
+        "xCm": 0,
+        "yCm": 175,
+        "zCm": 90
+      },
+      "light": {
+        "intensity": 13,
+        "distance": 11.5,
+        "angle": 0.4,
+        "penumbra": 0.25,
+        "decay": 1.4
+      },
+      "placed": true,
+      "aspectRatio": 0.56,
+      "frameBorderCm": 0,
+      "frameColor": "#423934"
+    },
+    {
+      "id": "a_s_1",
+      "title": "Aria Riflessa",
+      "description": "Onde sovrapposte che evocano una percezione atmosferica in movimento.",
+      "synopsis": {
+        "Artista": "Letizia Rostagno",
+        "Anno": "2022",
+        "Tecnica": "Fotografia"
+      },
+      "roomId": "hall_b",
+      "wall": "north",
+      "offset": 2.2,
+      "width": 1.55,
+      "height": 1.1,
+      "centerY": 1.7000000000000002,
+      "image": "./assets/art/3.jpg",
+      "scale": 1.1,
+      "widthCm": 70,
+      "heightCm": 93,
+      "lightOffset": {
+        "x": 0,
+        "y": 1.75,
+        "z": 0.9,
+        "xCm": 0,
+        "yCm": 175,
+        "zCm": 90
+      },
+      "light": {
+        "intensity": 13,
+        "distance": 11.5,
+        "angle": 0.4,
+        "penumbra": 0.25,
+        "decay": 1.4
+      },
+      "placed": true,
+      "aspectRatio": 0.75,
+      "frameBorderCm": 6,
+      "frameColor": "#423934"
+    },
+    {
+      "id": "a_s_2",
+      "title": "Orizzonte Strutturato",
+      "description": "Pattern triangolari che costruiscono un paesaggio sintetico e tattile.",
+      "synopsis": {
+        "Artista": "Letizia Rostagno",
+        "Anno": "2024",
+        "Tecnica": "Fotografia"
+      },
+      "roomId": "",
+      "wall": "north",
+      "offset": 0.8,
+      "width": 1.45,
+      "height": 1.02,
+      "centerY": 1.6,
+      "image": "./assets/art/4.jpg",
+      "scale": 1.02,
+      "widthCm": 40,
+      "heightCm": 25,
+      "lightOffset": {
+        "x": 0,
+        "y": 1.75,
+        "z": 0.9,
+        "xCm": 0,
+        "yCm": 175,
+        "zCm": 90
+      },
+      "light": {
+        "intensity": 13,
+        "distance": 11.5,
+        "angle": 0.4,
+        "penumbra": 0.25,
+        "decay": 1.4
+      },
+      "placed": true,
+      "aspectRatio": 1.5737704918032787,
+      "frameBorderCm": 6,
+      "frameColor": "#423934",
+      "customWallId": "custom_wall_1773225090433_196",
+      "customWallOffset": 0.78,
+      "customWallOffsetCm": 78,
+      "customWallSide": -1
+    },
+    {
+      "id": "a_w_1",
+      "title": "Moduli Verticali",
+      "description": "Sequenza ritmica di elementi verticali con tensione urbana.",
+      "synopsis": {
+        "Artista": "Letizia Rostagno",
+        "Anno": "2020",
+        "Tecnica": "Fotografia"
+      },
+      "roomId": "hall_b",
+      "wall": "west",
+      "offset": 3.9000000000000004,
+      "width": 1.38,
+      "height": 0.98,
+      "centerY": 1.55,
+      "image": "./assets/art/5.jpg",
+      "scale": 0.98,
+      "widthCm": 30,
+      "heightCm": 38,
+      "lightOffset": {
+        "x": 0,
+        "y": 1.75,
+        "z": 0.9,
+        "xCm": 0,
+        "yCm": 175,
+        "zCm": 90
+      },
+      "light": {
+        "intensity": 13,
+        "distance": 11.5,
+        "angle": 0.4,
+        "penumbra": 0.25,
+        "decay": 1.4
+      },
+      "placed": true,
+      "aspectRatio": 0.8,
+      "frameBorderCm": 6,
+      "frameColor": "#423934"
+    },
+    {
+      "id": "a_w_2",
+      "title": "Variazione Fredda",
+      "description": "Equilibrio tra massa scura e aperture luminose su fondo gradiente.",
+      "synopsis": {
+        "Artista": "Letizia Rostagno",
+        "Anno": "2025",
+        "Tecnica": "Fotografia"
+      },
+      "roomId": "hall_b",
+      "wall": "north",
+      "offset": 3.4000000000000004,
+      "width": 1.34,
+      "height": 0.96,
+      "centerY": 1.6500000000000001,
+      "image": "./assets/art/6.jpg",
+      "scale": 0.96,
+      "widthCm": 50,
+      "heightCm": 29,
+      "lightOffset": {
+        "x": 0,
+        "y": 1.75,
+        "z": 0.9,
+        "xCm": 0,
+        "yCm": 175,
+        "zCm": 90
+      },
+      "light": {
+        "intensity": 13,
+        "distance": 11.5,
+        "angle": 0.4,
+        "penumbra": 0.25,
+        "decay": 1.4
+      },
+      "placed": true,
+      "aspectRatio": 1.7454545454545454,
+      "frameBorderCm": 6,
+      "frameColor": "#423934"
+    },
+    {
+      "id": "b_w_2",
+      "title": "Segnale Costruttivo",
+      "description": "Pattern segmentato con forte contrasto tra base e verticali.",
+      "synopsis": {
+        "Artista": "Letizia Rostagno",
+        "Anno": "2021",
+        "Tecnica": "Fotografia"
+      },
+      "roomId": "",
+      "wall": "north",
+      "offset": 1.7000000000000002,
+      "width": 1.34,
+      "height": 0.95,
+      "centerY": 1.6500000000000001,
+      "image": "./assets/art/2.jpg",
+      "scale": 0.95,
+      "widthCm": 50,
+      "heightCm": 75,
+      "lightOffset": {
+        "x": 0,
+        "y": 1.75,
+        "z": 0.9,
+        "xCm": 0,
+        "yCm": 175,
+        "zCm": 90
+      },
+      "light": {
+        "intensity": 13,
+        "distance": 11.5,
+        "angle": 0.4,
+        "penumbra": 0.25,
+        "decay": 1.4
+      },
+      "placed": true,
+      "aspectRatio": 0.6666666666666666,
+      "frameBorderCm": 6,
+      "frameColor": "#423934",
+      "customWallId": "custom_wall_1773225090433_196",
+      "customWallOffset": 1.7,
+      "customWallOffsetCm": 170,
+      "customWallSide": -1
+    },
+    {
+      "id": "b_e_1",
+      "title": "Profilo Dinamico",
+      "description": "Intersezione di triangoli e piani con andamento diagonale.",
+      "synopsis": {
+        "Artista": "Letizia Rostagno",
+        "Anno": "2025",
+        "Tecnica": "Fotografia"
+      },
+      "roomId": "hall_b",
+      "wall": "north",
+      "offset": 0.9,
+      "width": 1.48,
+      "height": 1.05,
+      "centerY": 1.7000000000000002,
+      "image": "./assets/art/2.webp",
+      "scale": 1.05,
+      "widthCm": 50,
+      "heightCm": 89,
+      "lightOffset": {
+        "x": 0,
+        "y": 1.75,
+        "z": 0.9,
+        "xCm": 0,
+        "yCm": 175,
+        "zCm": 90
+      },
+      "light": {
+        "intensity": 13,
+        "distance": 11.5,
+        "angle": 0.4,
+        "penumbra": 0.25,
+        "decay": 1.4
+      },
+      "placed": true,
+      "aspectRatio": 0.5625,
+      "frameBorderCm": 6,
+      "frameColor": "#423934"
+    },
+    {
+      "id": "b_e_2",
+      "title": "Marea Luminosa",
+      "description": "Sovrapposizioni ondulate con punto focale caldo e diffuso.",
+      "synopsis": {
+        "Artista": "Letizia Rostagno",
+        "Anno": "2022",
+        "Tecnica": "Fotografia"
+      },
+      "roomId": "",
+      "wall": "west",
+      "offset": 0.5,
+      "width": 1.44,
+      "height": 1.02,
+      "centerY": 1.6,
+      "image": "./assets/art/8.webp",
+      "scale": 1.02,
+      "widthCm": 30,
+      "heightCm": 17,
+      "lightOffset": {
+        "x": 0,
+        "y": 1.75,
+        "z": 0.9,
+        "xCm": 0,
+        "yCm": 175,
+        "zCm": 90
+      },
+      "light": {
+        "intensity": 13,
+        "distance": 11.5,
+        "angle": 0.4,
+        "penumbra": 0.25,
+        "decay": 1.4
+      },
+      "placed": true,
+      "aspectRatio": 1.7777777777777777,
+      "frameBorderCm": 6,
+      "frameColor": "#423934",
+      "customWallId": "custom_wall_1773225095241_558",
+      "customWallOffset": 0.31,
+      "customWallOffsetCm": 31,
+      "customWallSide": -1
+    }
+  ],
+  "customWalls": [
+    {
+      "id": "custom_wall_1773225090433_196",
+      "x1": -12.8,
+      "z1": -2.2,
+      "x2": -10.2,
+      "z2": -2.2,
+      "x1Cm": -1280,
+      "z1Cm": -220,
+      "x2Cm": -1020,
+      "z2Cm": -220,
+      "height": 2.8,
+      "heightCm": 280,
+      "thickness": 0.1,
+      "thicknessCm": 10,
+      "openings": []
+    },
+    {
+      "id": "custom_wall_1773225095241_558",
+      "x1": -10.2,
+      "z1": -2.2,
+      "x2": -9.8,
+      "z2": -2.6,
+      "x1Cm": -1020,
+      "z1Cm": -220,
+      "x2Cm": -980,
+      "z2Cm": -260,
+      "height": 2.8,
+      "heightCm": 280,
+      "thickness": 0.1,
+      "thicknessCm": 10,
+      "openings": []
+    },
+    {
+      "id": "custom_wall_1773225157300_909",
+      "x1": -9.2,
+      "z1": -2.6,
+      "x2": -9.8,
+      "z2": -2.6,
+      "x1Cm": -920,
+      "z1Cm": -260,
+      "x2Cm": -980,
+      "z2Cm": -260,
+      "height": 2.8,
+      "heightCm": 280,
+      "thickness": 0.1,
+      "thicknessCm": 10,
+      "openings": []
+    },
+    {
+      "id": "custom_wall_1773225228038_503",
+      "x1": -12.8,
+      "z1": -1.4,
+      "x2": -12.8,
+      "z2": -2.2,
+      "x1Cm": -1280,
+      "z1Cm": -140,
+      "x2Cm": -1280,
+      "z2Cm": -220,
+      "height": 2.8,
+      "heightCm": 280,
+      "thickness": 0.1,
+      "thicknessCm": 10,
+      "openings": []
+    }
+  ],
+  "galleryLights": [
+    {
+      "id": "gallery_light_1773218565518_736",
+      "x": -16.2,
+      "z": -3.4,
+      "y": 2.9,
+      "xCm": -1620,
+      "zCm": -340,
+      "yCm": 290,
+      "intensity": 8,
+      "distance": 12,
+      "angle": 0.3839724354387525,
+      "angleDeg": 22,
+      "penumbra": 1,
+      "decay": 1.2,
+      "targetPaintingId": "",
+      "targetX": -16.2,
+      "targetZ": -1.4,
+      "targetY": 1.65,
+      "targetXCm": -1620,
+      "targetZCm": -140,
+      "targetYCm": 165
+    },
+    {
+      "id": "gallery_light_1773218914705_737",
+      "x": -11.6,
+      "z": -4.6,
+      "y": 2.9,
+      "xCm": -1160,
+      "zCm": -460,
+      "yCm": 290,
+      "intensity": 8,
+      "distance": 12,
+      "angle": 1.2042771838760873,
+      "angleDeg": 69,
+      "penumbra": 0.22,
+      "decay": 1.2,
+      "targetPaintingId": "",
+      "targetX": -11.6,
+      "targetZ": -2.4,
+      "targetY": 1.65,
+      "targetXCm": -1160,
+      "targetZCm": -240,
+      "targetYCm": 165
+    },
+    {
+      "id": "gallery_light_1773225268712_42",
+      "x": -11.6,
+      "z": -4.2,
+      "y": 2.9,
+      "xCm": -1160,
+      "zCm": -420,
+      "yCm": 290,
+      "intensity": 8,
+      "distance": 12,
+      "angle": 1.2042771838760873,
+      "angleDeg": 69,
+      "penumbra": 0.22,
+      "decay": 1.2,
+      "targetPaintingId": "a_s_1",
+      "targetX": -11.6,
+      "targetZ": -6,
+      "targetY": 1.65,
+      "targetXCm": -1160,
+      "targetZCm": -600,
+      "targetYCm": 165
+    },
+    {
+      "id": "gallery_light_1773225333363_825",
+      "x": -13,
+      "z": -2.8,
+      "y": 2.9,
+      "xCm": -1300,
+      "zCm": -280,
+      "yCm": 290,
+      "intensity": 8,
+      "distance": 12,
+      "angle": 1.2042771838760873,
+      "angleDeg": 69,
+      "penumbra": 0.22,
+      "decay": 1.2,
+      "targetPaintingId": "b_e_2",
+      "targetX": -14,
+      "targetZ": -2,
+      "targetY": 1.65,
+      "targetXCm": -1400,
+      "targetZCm": -200,
+      "targetYCm": 165
+    },
+    {
+      "id": "gallery_light_1773225346482_552",
+      "x": -16.2,
+      "z": -3.6,
+      "y": 2.9,
+      "xCm": -1620,
+      "zCm": -360,
+      "yCm": 290,
+      "intensity": 8,
+      "distance": 12,
+      "angle": 0.8726646259971648,
+      "angleDeg": 50,
+      "penumbra": 0.22,
+      "decay": 1.2,
+      "targetPaintingId": "",
+      "targetX": -16,
+      "targetZ": -6,
+      "targetY": 1.65,
+      "targetXCm": -1600,
+      "targetZCm": -600,
+      "targetYCm": 165
+    }
+  ],
+  "exhibition": {
+    "location": {
+      "name": "via mezzofanti 39, bologna, italia",
+      "lat": 44.4838819,
+      "lng": 11.3638267,
+      "zoom": 17
+    },
+    "startDate": "2026-03-09",
+    "endDate": "2026-03-22",
+    "indirizzoCompleto": "via mezzofanti 39, bologna, italia"
+  }
+}
