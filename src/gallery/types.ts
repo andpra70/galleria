@@ -128,6 +128,8 @@ export interface VisitorConfig {
     stopOnPaintingSeconds?: number;
     openPaintingCard?: boolean;
     cardSeconds?: number;
+    autoTargetNearestPainting?: boolean;
+    loop?: boolean;
   };
   eyeHeight?: number;
   moveSpeed?: number;

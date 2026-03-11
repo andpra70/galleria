@@ -660,6 +660,12 @@ body,
   padding: 12px 12px 14px;
 }
 
+#art-card:not(.is-editing) {
+  display: grid;
+  grid-template-rows: auto minmax(280px, 1fr) auto;
+  gap: 8px;
+}
+
 #filmstrip {
   pointer-events: auto;
   position: absolute;
@@ -764,9 +770,10 @@ body,
 
 #art-card-close {
   pointer-events: auto;
-  position: sticky;
-  top: 0;
-  float: right;
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
   border: 0;
   border-radius: 999px;
   width: 30px;
@@ -780,18 +787,25 @@ body,
 
 #art-card-image {
   width: 100%;
-  height: auto;
-  max-height: 220px;
+  height: 100%;
+  min-height: 280px;
+  max-height: 100%;
   object-fit: contain;
   object-position: center;
   border-radius: 8px;
   display: block;
-  margin-bottom: 10px;
-  background: #f3f4f6;
+  margin-bottom: 0;
+  background: #e5e7eb;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  padding: 8px;
 }
 
 #art-card-preview-text {
-  display: block;
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  max-height: 88px;
+  overflow: auto;
 }
 
 #art-card.is-editing {
@@ -834,20 +848,32 @@ body,
 }
 
 #art-card-title {
-  margin: 0 0 8px;
-  font-size: 1.08rem;
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.2;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 #art-card-description {
-  margin: 0 0 10px;
-  font-size: 0.92rem;
-  line-height: 1.4;
+  margin: 0;
+  font-size: 0.74rem;
+  line-height: 1.2;
+  color: #334155;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 #art-card-synoptic {
   display: grid;
-  gap: 6px;
-  margin-bottom: 10px;
+  gap: 2px;
+  max-height: 44px;
+  overflow: auto;
+  margin-bottom: 0;
 }
 
 #art-edit-move-left,
@@ -1049,15 +1075,19 @@ label[for="art-edit-image-url"] {
 
 .synoptic-row {
   display: grid;
-  grid-template-columns: 130px 1fr;
-  gap: 8px;
-  border-top: 1px solid rgba(15, 23, 42, 0.1);
-  padding-top: 6px;
-  font-size: 0.85rem;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 4px;
+  align-items: baseline;
+  border-top: 0;
+  padding-top: 0;
+  font-size: 0.7rem;
+  line-height: 1.1;
 }
 
 .synoptic-row strong {
   color: #0f172a;
+  opacity: 0.8;
+  font-weight: 600;
 }
 
 @media (max-width: 980px) {
@@ -1115,6 +1145,10 @@ label[for="art-edit-image-url"] {
 
   #art-card {
     inset: 4%;
+  }
+
+  #art-card:not(.is-editing) {
+    grid-template-rows: auto minmax(180px, 1fr) auto;
   }
 
   #art-card.is-editing {

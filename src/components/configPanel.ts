@@ -328,6 +328,18 @@ export function renderConfigPanel() {
                   <input id="config-map-path-open-card" type="checkbox" checked />
                 </label>
                 <label class="config-field">
+                  <span>AutoTarget opera vicina</span>
+                  <input id="config-map-path-autotarget" type="checkbox" checked />
+                </label>
+              </div>
+              <div class="config-inline-fields">
+                <label class="config-field">
+                  <span>Loop</span>
+                  <input id="config-map-path-loop" type="checkbox" />
+                </label>
+              </div>
+              <div class="config-inline-fields">
+                <label class="config-field">
                   <span>Tempo scheda (s)</span>
                   <input id="config-map-path-card-seconds" type="number" min="0" step="0.1" value="2.5" />
                 </label>

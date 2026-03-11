@@ -172,6 +172,8 @@ const configMapLightPenumbra = mustEl<HTMLInputElement>("config-map-light-penumb
 const configMapPathWalkSeconds = mustEl<HTMLInputElement>("config-map-path-walk-seconds");
 const configMapPathStopSeconds = mustEl<HTMLInputElement>("config-map-path-stop-seconds");
 const configMapPathOpenCard = mustEl<HTMLInputElement>("config-map-path-open-card");
+const configMapPathAutoTarget = mustEl<HTMLInputElement>("config-map-path-autotarget");
+const configMapPathLoop = mustEl<HTMLInputElement>("config-map-path-loop");
 const configMapPathCardSeconds = mustEl<HTMLInputElement>("config-map-path-card-seconds");
 const configMapPathAddPointBtn = mustEl<HTMLButtonElement>("config-map-path-add-point");
 const configMapPathDeletePointBtn = mustEl<HTMLButtonElement>("config-map-path-delete-point");
@@ -418,12 +420,14 @@ const pathPlaybackState: {
   active: boolean;
   nextIndex: number;
   waitingUntilMs: number;
+  cardCloseAtMs: number;
   lastMoveIssuedAtMs: number;
   baseSpeedScale: number;
 } = {
   active: false,
   nextIndex: 0,
   waitingUntilMs: 0,
+  cardCloseAtMs: 0,
   lastMoveIssuedAtMs: 0,
   baseSpeedScale: 1.35,
 };
@@ -1774,13 +1778,13 @@ function moveVisitorToPlanPointFromMap(rawPoint: PlanPoint) {
   return true;
 }
 
-function findNearestPaintingEntryToPoint(point: PlanPoint, toleranceM = 1.8) {
+function findNearestPaintingEntryToPoint(point: PlanPoint, toleranceM = Number.POSITIVE_INFINITY) {
   let best: { id: string; distance: number } | null = null;
   paintingRegistry.forEach((entry, id) => {
     const dx = Number(entry.paintingSpot.center.x) - point.x;
     const dz = Number(entry.paintingSpot.center.z) - point.z;
     const distance = Math.hypot(dx, dz);
-    if (distance > toleranceM) {
+    if (Number.isFinite(toleranceM) && distance > toleranceM) {
       return;
     }
     if (!best || distance < best.distance) {
@@ -1790,6 +1794,36 @@ function findNearestPaintingEntryToPoint(point: PlanPoint, toleranceM = 1.8) {
   return best ? paintingRegistry.get(best.id) ?? null : null;
 }
 
+function findPaintingAssignedToKeyframe(points: PlanPoint[], keyframeIndex: number) {
+  if (keyframeIndex < 0 || keyframeIndex >= points.length) {
+    return null;
+  }
+  const targetPoint = points[keyframeIndex];
+  let bestForThisKeyframe: { id: string; distance: number } | null = null;
+  paintingRegistry.forEach((entry, id) => {
+    let nearestIdx = -1;
+    let nearestDist = Number.POSITIVE_INFINITY;
+    points.forEach((point, index) => {
+      const distance = Math.hypot(Number(entry.paintingSpot.center.x) - point.x, Number(entry.paintingSpot.center.z) - point.z);
+      if (distance < nearestDist) {
+        nearestDist = distance;
+        nearestIdx = index;
+      }
+    });
+    if (nearestIdx !== keyframeIndex) {
+      return;
+    }
+    const distanceToCurrent = Math.hypot(
+      Number(entry.paintingSpot.center.x) - targetPoint.x,
+      Number(entry.paintingSpot.center.z) - targetPoint.z
+    );
+    if (!bestForThisKeyframe || distanceToCurrent < bestForThisKeyframe.distance) {
+      bestForThisKeyframe = { id, distance: distanceToCurrent };
+    }
+  });
+  return bestForThisKeyframe ? paintingRegistry.get(bestForThisKeyframe.id) ?? null : null;
+}
+
 function stopPathPlayback() {
   if (!pathPlaybackState.active) {
     return;
@@ -1797,17 +1831,25 @@ function stopPathPlayback() {
   pathPlaybackState.active = false;
   pathPlaybackState.nextIndex = 0;
   pathPlaybackState.waitingUntilMs = 0;
+  pathPlaybackState.cardCloseAtMs = 0;
   pathPlaybackState.lastMoveIssuedAtMs = 0;
   movement.speedScale = pathPlaybackState.baseSpeedScale;
+  closePaintingCard();
 }
 
 function moveToPathIndex(index: number) {
   const points = getPathTourKeyframes();
+  const tour = ensureVisitorPathTourConfig();
+  const loop = tour.loop === true;
   if (index < 0 || index >= points.length) {
+    if (loop && points.length > 0) {
+      pathPlaybackState.nextIndex = 0;
+      moveToPathIndex(0);
+      return;
+    }
     stopPathPlayback();
     return;
   }
-  const tour = ensureVisitorPathTourConfig();
   const walkSeconds = clampNumber(Number.isFinite(Number(tour.walkSeconds)) ? Number(tour.walkSeconds) : 4, 0.2, 60);
   const point = points[index];
   const target = new THREE.Vector3(point.x, visitor.eyeHeight, point.z);
@@ -1833,6 +1875,7 @@ function startPathPlayback() {
   pathPlaybackState.active = true;
   pathPlaybackState.nextIndex = 0;
   pathPlaybackState.waitingUntilMs = 0;
+  pathPlaybackState.cardCloseAtMs = 0;
   pathPlaybackState.lastMoveIssuedAtMs = 0;
   closePaintingCard();
   moveToPathIndex(0);
@@ -1843,6 +1886,18 @@ function updatePathPlayback() {
     return;
   }
   const nowMs = performance.now();
+  const tour = ensureVisitorPathTourConfig();
+  const autoTarget = tour.autoTargetNearestPainting !== false;
+  if (autoTarget) {
+    const nearest = findNearestPaintingEntryToPoint({ x: visitor.position.x, z: visitor.position.z });
+    if (nearest) {
+      movement.focusTarget = nearest.paintingSpot.center.clone();
+    }
+  }
+  if (pathPlaybackState.cardCloseAtMs > 0 && nowMs >= pathPlaybackState.cardCloseAtMs) {
+    closePaintingCard();
+    pathPlaybackState.cardCloseAtMs = 0;
+  }
   if (pathPlaybackState.waitingUntilMs > 0) {
     if (nowMs < pathPlaybackState.waitingUntilMs) {
       return;
@@ -1857,12 +1912,16 @@ function updatePathPlayback() {
   }
   const points = getPathTourKeyframes();
   if (pathPlaybackState.nextIndex < 0 || pathPlaybackState.nextIndex >= points.length) {
+    if (tour.loop === true && points.length > 0) {
+      pathPlaybackState.nextIndex = 0;
+      moveToPathIndex(0);
+      return;
+    }
     stopPathPlayback();
     return;
   }
   const point = points[pathPlaybackState.nextIndex];
-  const entry = findNearestPaintingEntryToPoint(point);
-  const tour = ensureVisitorPathTourConfig();
+  const entry = findPaintingAssignedToKeyframe(points, pathPlaybackState.nextIndex);
   const stopSeconds = clampNumber(Number.isFinite(Number(tour.stopOnPaintingSeconds)) ? Number(tour.stopOnPaintingSeconds) : 1.5, 0, 60);
   const cardSeconds = clampNumber(Number.isFinite(Number(tour.cardSeconds)) ? Number(tour.cardSeconds) : 2.5, 0, 60);
   const shouldOpenCard = tour.openPaintingCard !== false;
@@ -1872,6 +1931,7 @@ function updatePathPlayback() {
     waitSeconds = stopSeconds;
     if (shouldOpenCard && cardSeconds > 0) {
       openPaintingCard(entry.paintingSpot);
+      pathPlaybackState.cardCloseAtMs = nowMs + cardSeconds * 1000;
       waitSeconds = Math.max(waitSeconds, cardSeconds);
     }
   }
@@ -4729,14 +4789,19 @@ function syncPathTourInspectorControls() {
   const walkSeconds = Number.isFinite(walkSecondsRaw) ? clampNumber(walkSecondsRaw, 0.2, 60) : 4;
   const stopSeconds = Number.isFinite(stopSecondsRaw) ? clampNumber(stopSecondsRaw, 0, 60) : 1.5;
   const cardSeconds = Number.isFinite(cardSecondsRaw) ? clampNumber(cardSecondsRaw, 0, 60) : 2.5;
+  const autoTarget = tour.autoTargetNearestPainting !== false;
+  const loop = tour.loop === true;
   tour.walkSeconds = walkSeconds;
   tour.stopOnPaintingSeconds = stopSeconds;
   tour.cardSeconds = cardSeconds;
   tour.openPaintingCard = tour.openPaintingCard !== false;
+  tour.autoTargetNearestPainting = autoTarget;
   configMapPathWalkSeconds.value = walkSeconds.toFixed(1).replace(/\.0$/, "");
   configMapPathStopSeconds.value = stopSeconds.toFixed(1).replace(/\.0$/, "");
   configMapPathCardSeconds.value = cardSeconds.toFixed(1).replace(/\.0$/, "");
   configMapPathOpenCard.checked = tour.openPaintingCard;
+  configMapPathAutoTarget.checked = autoTarget;
+  configMapPathLoop.checked = loop;
   const points = getPathTourKeyframes();
   const selected = galleryMapEditorState.selectedPathPointIndex;
   configMapPathDeletePointBtn.disabled = !(selected != null && selected >= 0 && selected < points.length);
@@ -5586,12 +5651,16 @@ function attachConfigPanel() {
     tour.walkSeconds = clampNumber(Number(configMapPathWalkSeconds.value) || 4, 0.2, 60);
     tour.stopOnPaintingSeconds = clampNumber(Number(configMapPathStopSeconds.value) || 0, 0, 60);
     tour.openPaintingCard = configMapPathOpenCard.checked;
+    tour.autoTargetNearestPainting = configMapPathAutoTarget.checked;
+    tour.loop = configMapPathLoop.checked;
     tour.cardSeconds = clampNumber(Number(configMapPathCardSeconds.value) || 0, 0, 60);
     syncPathTourInspectorControls();
   };
   configMapPathWalkSeconds.addEventListener("change", onPathTourParamsChanged);
   configMapPathStopSeconds.addEventListener("change", onPathTourParamsChanged);
   configMapPathOpenCard.addEventListener("change", onPathTourParamsChanged);
+  configMapPathAutoTarget.addEventListener("change", onPathTourParamsChanged);
+  configMapPathLoop.addEventListener("change", onPathTourParamsChanged);
   configMapPathCardSeconds.addEventListener("change", onPathTourParamsChanged);
   configMapPathAddPointBtn.addEventListener("click", () => {
     addPathPoint({ x: visitor.position.x, z: visitor.position.z });
