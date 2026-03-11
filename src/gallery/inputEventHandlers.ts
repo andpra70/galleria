@@ -68,6 +68,9 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
   const { paintingPickMeshes, paintingRegistry } = app.collections;
   const { minimapClientToWorld } = app.helpers;
   const { clampToWalkable, moveVisitorTo, setPointerRay, placeCatalogPaintingAtWall, handleWallCreateClick, handleFloorMove } = actions;
+  let lastTapTimeMs = 0;
+  let lastTapX = 0;
+  let lastTapY = 0;
   const readWalkDebugFlag = () => {
     try {
       return (window as Window & { __walkDebug?: boolean }).__walkDebug === true || window.localStorage.getItem("walk_debug") === "1";
@@ -341,6 +344,20 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
 
     if (!wasTap || !changed) {
       return;
+    }
+
+    const nowMs = performance.now();
+    const tapDx = changed.clientX - lastTapX;
+    const tapDy = changed.clientY - lastTapY;
+    const isDoubleTap = nowMs - lastTapTimeMs <= 320 && tapDx * tapDx + tapDy * tapDy <= 24 * 24;
+    lastTapTimeMs = nowMs;
+    lastTapX = changed.clientX;
+    lastTapY = changed.clientY;
+
+    if (isDoubleTap) {
+      if (paintingInteractions.handlePaintingInstantMoveOnDoubleClick(changed.clientX, changed.clientY)) {
+        return;
+      }
     }
 
     if (paintingInteractions.handleDeleteHandleClick(changed.clientX, changed.clientY)) {

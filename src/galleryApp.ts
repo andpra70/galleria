@@ -1788,10 +1788,17 @@ function resolveRoomIdAtPlanPoint(point: PlanPoint) {
   return null;
 }
 
+function resolvePaintingRoomId(entry: PaintingRegistryEntry) {
+  return resolveRoomIdAtPlanPoint({
+    x: Number(entry.paintingSpot.center.x),
+    z: Number(entry.paintingSpot.center.z),
+  });
+}
+
 function findNearestPaintingEntryToPoint(point: PlanPoint, toleranceM = Number.POSITIVE_INFINITY, roomId: string | null = null) {
   let best: { id: string; distance: number } | null = null;
   paintingRegistry.forEach((entry, id) => {
-    if (roomId && (entry.painting.roomId ?? "") !== roomId) {
+    if (roomId && resolvePaintingRoomId(entry) !== roomId) {
       return;
     }
     const dx = Number(entry.paintingSpot.center.x) - point.x;
@@ -1814,7 +1821,7 @@ function findPaintingAssignedToKeyframe(points: PlanPoint[], keyframeIndex: numb
   const targetPoint = points[keyframeIndex];
   let bestForThisKeyframe: { id: string; distance: number } | null = null;
   paintingRegistry.forEach((entry, id) => {
-    if (roomId && (entry.painting.roomId ?? "") !== roomId) {
+    if (roomId && resolvePaintingRoomId(entry) !== roomId) {
       return;
     }
     let nearestIdx = -1;
@@ -1938,7 +1945,9 @@ function updatePathPlayback() {
     return;
   }
   const point = points[pathPlaybackState.nextIndex];
-  const entry = findPaintingAssignedToKeyframe(points, pathPlaybackState.nextIndex, currentRoomId);
+  const keyframeRoomId = resolveRoomIdAtPlanPoint(point);
+  const roomConstraint = keyframeRoomId ?? currentRoomId;
+  const entry = findPaintingAssignedToKeyframe(points, pathPlaybackState.nextIndex, roomConstraint);
   const stopSeconds = clampNumber(Number.isFinite(Number(tour.stopOnPaintingSeconds)) ? Number(tour.stopOnPaintingSeconds) : 1.5, 0, 60);
   const cardSeconds = clampNumber(Number.isFinite(Number(tour.cardSeconds)) ? Number(tour.cardSeconds) : 2.5, 0, 60);
   const shouldOpenCard = tour.openPaintingCard !== false;
