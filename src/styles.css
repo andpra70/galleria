@@ -1167,12 +1167,35 @@ label[for="art-edit-image-url"] {
   }
 
   #art-card:not(.is-editing) {
-    grid-template-areas:
-      "close"
-      "image"
-      "info";
-    grid-template-rows: auto minmax(0, 4fr) minmax(0, 1fr);
-    grid-template-columns: 1fr;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  #art-card:not(.is-editing).art-layout-vertical,
+  #art-card:not(.is-editing).art-layout-horizontal {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  #art-card:not(.is-editing) #art-card-close {
+    order: 0;
+    align-self: flex-end;
+  }
+
+  #art-card:not(.is-editing) #art-card-image {
+    order: 1;
+    flex: 0 0 80%;
+    height: 80%;
+    min-height: 180px;
+  }
+
+  #art-card:not(.is-editing) #art-card-preview-text {
+    order: 2;
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
   }
 
   #art-card.is-editing {
