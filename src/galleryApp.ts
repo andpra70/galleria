@@ -141,8 +141,12 @@ const artEditAudioWaveform = mustEl<HTMLCanvasElement>("art-edit-audio-waveform"
 const artEditAudioStartSec = mustEl<HTMLInputElement>("art-edit-audio-start-sec");
 const artEditAudioEndSec = mustEl<HTMLInputElement>("art-edit-audio-end-sec");
 const artEditAudioToggle = mustEl<HTMLButtonElement>("art-edit-audio-toggle");
+const artEditAudioPause = mustEl<HTMLButtonElement>("art-edit-audio-pause");
+const artEditAudioStop = mustEl<HTMLButtonElement>("art-edit-audio-stop");
 const artEditAudioUpload = mustEl<HTMLButtonElement>("art-edit-audio-upload");
 const artEditAudioClear = mustEl<HTMLButtonElement>("art-edit-audio-clear");
+const artEditAudioRecord = mustEl<HTMLButtonElement>("art-edit-audio-record");
+const artEditAudioRecordStop = mustEl<HTMLButtonElement>("art-edit-audio-record-stop");
 const artEditAudioFile = mustEl<HTMLInputElement>("art-edit-audio-file");
 const artEditAudioDropZone = mustEl<HTMLElement>("art-edit-audio-drop-zone");
 const artEditSynopsisList = mustEl<HTMLElement>("art-edit-synopsis-list");
@@ -577,6 +581,9 @@ let audioWaveformPointerMode: "start" | "end" | "range" | null = null;
 let audioWaveformDragStartX = 0;
 let audioWaveformDragStartStartSec = 0;
 let audioWaveformDragStartEndSec = 0;
+let audioRecordingMediaRecorder: MediaRecorder | null = null;
+let audioRecordingStream: MediaStream | null = null;
+let audioRecordingChunks: Blob[] = [];
 
 const world = new THREE.Group();
 scene.add(world);
@@ -605,8 +612,12 @@ const artEditDomElements = {
   artEditAudioStartSec,
   artEditAudioEndSec,
   artEditAudioToggle,
+  artEditAudioPause,
+  artEditAudioStop,
   artEditAudioUpload,
   artEditAudioClear,
+  artEditAudioRecord,
+  artEditAudioRecordStop,
   artEditAudioFile,
   artEditAudioDropZone,
   artEditSynopsisList,
@@ -934,8 +945,12 @@ const paintingEditorHandlers = createPaintingEditorHandlers({
     artEditImageUrl,
     artEditAudioStatus,
     artEditAudioToggle,
+    artEditAudioPause,
+    artEditAudioStop,
     artEditAudioUpload,
     artEditAudioClear,
+    artEditAudioRecord,
+    artEditAudioRecordStop,
     artEditAudioFile,
     artEditAudioDropZone,
     artEditSynopsisList,
@@ -1265,7 +1280,17 @@ function syncAudioToggleLabels(isPlaying: boolean) {
   artCardAudioToggle.dataset.playing = isPlaying ? "true" : "false";
   artCardAudioToggle.textContent = isPlaying ? "■" : "🔊";
   artCardAudioToggle.title = isPlaying ? "Ferma audio opera" : "Riproduci audio opera";
-  artEditAudioToggle.textContent = isPlaying ? "Stop audio" : "Play audio";
+  artEditAudioToggle.textContent = "Play";
+  artEditAudioPause.disabled = !isPlaying;
+  artEditAudioStop.disabled = !isPlaying;
+}
+
+function syncAudioEditorButtons() {
+  const hasAudio = Boolean((artCardAudio.src || "").trim());
+  const isPlaying = hasAudio && !artCardAudio.paused;
+  artEditAudioToggle.disabled = !hasAudio;
+  artEditAudioPause.disabled = !isPlaying;
+  artEditAudioStop.disabled = !isPlaying;
 }
 
 function configureCurrentPaintingAudioRange() {
@@ -1291,6 +1316,114 @@ function stopCurrentPaintingAudio() {
   const startSec = Math.max(0, Number(artCardAudio.dataset.startSec || 0) || 0);
   artCardAudio.currentTime = startSec;
   syncAudioToggleLabels(false);
+}
+
+function pauseCurrentPaintingAudio() {
+  artCardAudio.pause();
+  syncAudioToggleLabels(false);
+}
+
+function stopRecordingStream() {
+  audioRecordingStream?.getTracks().forEach((track) => {
+    track.stop();
+  });
+  audioRecordingStream = null;
+}
+
+function syncAudioRecordButtons(isRecording: boolean) {
+  artEditAudioRecord.disabled = isRecording;
+  artEditAudioRecordStop.disabled = !isRecording;
+}
+
+function buildRecordedAudioFile(blob: Blob) {
+  const mimeType = blob.type || "audio/webm";
+  let extension = "webm";
+  if (mimeType.includes("mpeg") || mimeType.includes("mp3")) {
+    extension = "mp3";
+  } else if (mimeType.includes("mp4")) {
+    extension = "m4a";
+  } else if (mimeType.includes("ogg")) {
+    extension = "ogg";
+  }
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  return new File([blob], `recording-${timestamp}.${extension}`, { type: mimeType });
+}
+
+function resolveRecordingMimeType() {
+  const mimeTypeCandidates = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/mp4",
+    "audio/ogg;codecs=opus",
+  ];
+  return mimeTypeCandidates.find((mimeType) => MediaRecorder.isTypeSupported(mimeType)) || "";
+}
+
+async function startAudioRecording() {
+  if (audioRecordingMediaRecorder) {
+    return;
+  }
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error("Registrazione microfono non supportata dal browser");
+  }
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const mimeType = resolveRecordingMimeType();
+  const mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+  audioRecordingStream = stream;
+  audioRecordingMediaRecorder = mediaRecorder;
+  audioRecordingChunks = [];
+  syncAudioRecordButtons(true);
+  artEditAudioStatus.textContent = "Registrazione dal microfono...";
+  mediaRecorder.addEventListener("dataavailable", (event) => {
+    if (event.data.size > 0) {
+      audioRecordingChunks.push(event.data);
+    }
+  });
+  mediaRecorder.addEventListener("stop", () => {
+    const blob = new Blob(audioRecordingChunks, { type: mediaRecorder.mimeType || mimeType || "audio/webm" });
+    stopRecordingStream();
+    audioRecordingMediaRecorder = null;
+    audioRecordingChunks = [];
+    syncAudioRecordButtons(false);
+    if (!blob.size) {
+      artEditAudioStatus.textContent = "Registrazione vuota";
+      return;
+    }
+    void (async () => {
+      try {
+        artEditAudioStatus.textContent = "Salvataggio registrazione...";
+        const storedPath = await uploadAudioFileToLibrary(buildRecordedAudioFile(blob));
+        artEditAudioSelect.value = storedPath;
+        artEditAudioStatus.textContent = "Registrazione aggiunta in audioGallery";
+        artEditAudioSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      } catch (error) {
+        console.warn("Impossibile salvare la registrazione audio", error);
+        artEditAudioStatus.textContent = "Errore salvataggio registrazione";
+      }
+    })();
+  });
+  mediaRecorder.addEventListener("error", () => {
+    stopRecordingStream();
+    audioRecordingMediaRecorder = null;
+    audioRecordingChunks = [];
+    syncAudioRecordButtons(false);
+    artEditAudioStatus.textContent = "Errore registrazione microfono";
+  });
+  mediaRecorder.start(250);
+}
+
+function stopAudioRecording() {
+  if (!audioRecordingMediaRecorder) {
+    return;
+  }
+  if (audioRecordingMediaRecorder.state !== "inactive") {
+    audioRecordingMediaRecorder.stop();
+  } else {
+    stopRecordingStream();
+    audioRecordingMediaRecorder = null;
+    audioRecordingChunks = [];
+    syncAudioRecordButtons(false);
+  }
 }
 
 function getAudioWaveformCtx() {
@@ -6585,8 +6718,8 @@ function attachInput() {
   artEditAudioSelect.addEventListener("change", () => {
     const asset = findAudioAssetById(artEditAudioSelect.value);
     artEditAudioStatus.textContent = asset ? `Selezionato: ${asset.name || asset.id}` : "Nessun audio";
-    artEditAudioToggle.disabled = !asset;
     artEditAudioClear.disabled = !asset;
+    syncAudioEditorButtons();
     void loadAudioWaveformForAsset(asset?.id);
   });
   artEditAudioStartSec.addEventListener("input", drawAudioWaveform);
@@ -6598,12 +6731,20 @@ function attachInput() {
     if (artEditAudioToggle.disabled || !(artCardAudio.src || "").trim()) {
       return;
     }
-    if (artCardAudio.paused) {
-      try {
-        await playCurrentPaintingAudio();
-      } catch (error) {
-        console.warn("Impossibile riprodurre l'audio dell'opera", error);
-      }
+    try {
+      await playCurrentPaintingAudio();
+    } catch (error) {
+      console.warn("Impossibile riprodurre l'audio dell'opera", error);
+    }
+  });
+  artEditAudioPause.addEventListener("click", () => {
+    if (artEditAudioPause.disabled) {
+      return;
+    }
+    pauseCurrentPaintingAudio();
+  });
+  artEditAudioStop.addEventListener("click", () => {
+    if (artEditAudioStop.disabled) {
       return;
     }
     stopCurrentPaintingAudio();
@@ -6635,6 +6776,20 @@ function attachInput() {
     artEditAudioEndSec.value = "";
     artEditAudioStatus.textContent = "Nessun audio";
     dispatchAudioSelectionChange();
+  });
+  artEditAudioRecord.addEventListener("click", () => {
+    void (async () => {
+      try {
+        await startAudioRecording();
+      } catch (error) {
+        console.warn("Impossibile avviare la registrazione microfono", error);
+        syncAudioRecordButtons(false);
+        artEditAudioStatus.textContent = "Errore accesso microfono";
+      }
+    })();
+  });
+  artEditAudioRecordStop.addEventListener("click", () => {
+    stopAudioRecording();
   });
   artEditAudioDropZone.addEventListener("dragover", (event) => {
     const files = event.dataTransfer?.files;
@@ -6690,6 +6845,7 @@ function attachInput() {
   });
   artCardAudio.addEventListener("ended", () => {
     syncAudioToggleLabels(false);
+    syncAudioEditorButtons();
     drawAudioWaveform();
   });
   artCardAudio.addEventListener("pause", () => {
@@ -6697,9 +6853,13 @@ function attachInput() {
       return;
     }
     syncAudioToggleLabels(false);
+    syncAudioEditorButtons();
     drawAudioWaveform();
   });
   artCardAudio.addEventListener("play", () => {
+    syncAudioEditorButtons();
     drawAudioWaveform();
   });
+  syncAudioEditorButtons();
+  syncAudioRecordButtons(false);
 }

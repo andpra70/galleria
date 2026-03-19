@@ -74,7 +74,11 @@ export function resetEditPanelDom(elements: ArtEditDomElements) {
     artEditAudioStartSec,
     artEditAudioEndSec,
     artEditAudioToggle,
+    artEditAudioPause,
+    artEditAudioStop,
     artEditAudioFile,
+    artEditAudioRecord,
+    artEditAudioRecordStop,
     artEditAudioDropZone,
     artEditSynopsisList,
     artEditDelete,
@@ -106,8 +110,12 @@ export function resetEditPanelDom(elements: ArtEditDomElements) {
   waveformCtx?.clearRect(0, 0, artEditAudioWaveform.width, artEditAudioWaveform.height);
   artEditAudioStartSec.value = "0";
   artEditAudioEndSec.value = "";
-  artEditAudioToggle.textContent = "Play audio";
+  artEditAudioToggle.textContent = "Play";
   artEditAudioToggle.disabled = true;
+  artEditAudioPause.disabled = true;
+  artEditAudioStop.disabled = true;
+  artEditAudioRecord.disabled = false;
+  artEditAudioRecordStop.disabled = true;
   artEditAudioFile.value = "";
   artEditAudioDropZone.classList.remove("is-drop-target");
   artEditSynopsisList.innerHTML = "";

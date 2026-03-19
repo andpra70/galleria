@@ -30,8 +30,12 @@ export type ArtEditDomElements = {
   artEditAudioStartSec: HTMLInputElement;
   artEditAudioEndSec: HTMLInputElement;
   artEditAudioToggle: HTMLButtonElement;
+  artEditAudioPause: HTMLButtonElement;
+  artEditAudioStop: HTMLButtonElement;
   artEditAudioUpload: HTMLButtonElement;
   artEditAudioClear: HTMLButtonElement;
+  artEditAudioRecord: HTMLButtonElement;
+  artEditAudioRecordStop: HTMLButtonElement;
   artEditAudioFile: HTMLInputElement;
   artEditAudioDropZone: HTMLElement;
   artEditSynopsisList: HTMLElement;

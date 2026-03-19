@@ -1281,7 +1281,11 @@ label[for="art-edit-image-url"] {
 
 #art-edit-audio-upload,
 #art-edit-audio-toggle,
-#art-edit-audio-clear {
+#art-edit-audio-pause,
+#art-edit-audio-stop,
+#art-edit-audio-clear,
+#art-edit-audio-record,
+#art-edit-audio-record-stop {
   border: 0;
   border-radius: 8px;
   padding: 8px 10px;
@@ -1290,8 +1294,15 @@ label[for="art-edit-image-url"] {
 }
 
 #art-edit-audio-toggle,
-#art-edit-audio-upload {
+#art-edit-audio-upload,
+#art-edit-audio-record {
   background: #0f766e;
+  color: #ffffff;
+}
+
+#art-edit-audio-pause,
+#art-edit-audio-stop {
+  background: #1d4ed8;
   color: #ffffff;
 }
 
@@ -1300,12 +1311,21 @@ label[for="art-edit-image-url"] {
   color: #0f172a;
 }
 
+#art-edit-audio-record-stop {
+  background: #b91c1c;
+  color: #ffffff;
+}
+
 #art-edit-audio-clear:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
 
-#art-edit-audio-toggle:disabled {
+#art-edit-audio-toggle:disabled,
+#art-edit-audio-pause:disabled,
+#art-edit-audio-stop:disabled,
+#art-edit-audio-record:disabled,
+#art-edit-audio-record-stop:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
