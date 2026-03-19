@@ -2,7 +2,9 @@ export function renderArtCard() {
   return `
     <aside id="art-card" aria-live="polite" hidden>
       <button id="art-card-close" type="button" aria-label="Chiudi scheda">×</button>
-      <img id="art-card-image" alt="Anteprima opera" />
+      <div id="art-card-image-viewport" aria-label="Immagine opera zoomabile">
+        <img id="art-card-image" alt="Anteprima opera" />
+      </div>
       <div id="art-card-preview-text">
         <h2 id="art-card-title"></h2>
         <p id="art-card-description"></p>

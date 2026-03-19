@@ -107,6 +107,7 @@ const configExportJsonBtn = mustEl<HTMLButtonElement>("config-export-json");
 const configImportJsonBtn = mustEl<HTMLButtonElement>("config-import-json");
 const configImportCatalogJsonBtn = mustEl<HTMLButtonElement>("config-import-catalog-json");
 const artCard = mustEl<HTMLElement>("art-card");
+const artCardImageViewport = mustEl<HTMLElement>("art-card-image-viewport");
 const artCardTitle = mustEl<HTMLElement>("art-card-title");
 const artCardDescription = mustEl<HTMLElement>("art-card-description");
 const artCardImage = mustEl<HTMLImageElement>("art-card-image");
@@ -537,6 +538,23 @@ const requestedProjectFromUrl = (() => {
 const showConfigPanel = urlSearchParams.get("edit") === "1" || galleryBootstrap.edit === true;
 const readOnlyMode = Boolean(galleryBootstrap.readOnly) && !showConfigPanel;
 const requestedConfigPath = (galleryBootstrap.configPath ?? "config/gallery.json").trim() || "config/gallery.json";
+const ART_CARD_IMAGE_MIN_SCALE = 1;
+const ART_CARD_IMAGE_MAX_SCALE = 5;
+let artCardImageScale = 1;
+let artCardImageTranslateX = 0;
+let artCardImageTranslateY = 0;
+const activeArtCardPointers = new Map<number, { x: number; y: number }>();
+let artCardPanPointerId: number | null = null;
+let artCardPanStartTranslateX = 0;
+let artCardPanStartTranslateY = 0;
+let artCardPanStartX = 0;
+let artCardPanStartY = 0;
+let artCardPinchStartDistance = 0;
+let artCardPinchStartScale = 1;
+let artCardPinchStartTranslateX = 0;
+let artCardPinchStartTranslateY = 0;
+let artCardPinchStartMidX = 0;
+let artCardPinchStartMidY = 0;
 
 const world = new THREE.Group();
 scene.add(world);
@@ -759,7 +777,7 @@ const buildPainting = createPaintingBuilder({
   },
 });
 
-const { openPaintingCard, closePaintingCard, showEditPanelForEntry } = createPaintingCardController({
+const paintingCardController = createPaintingCardController({
   app: appContext,
   artCardDomElements,
   artEditDomElements,
@@ -770,6 +788,15 @@ const { openPaintingCard, closePaintingCard, showEditPanelForEntry } = createPai
   resolvePaintingAspectRatio,
   mToCm,
 });
+const showEditPanelForEntry = paintingCardController.showEditPanelForEntry;
+const openPaintingCard = (paintingSpot: PaintingSpot) => {
+  resetArtCardImageTransform();
+  paintingCardController.openPaintingCard(paintingSpot);
+};
+const closePaintingCard = () => {
+  paintingCardController.closePaintingCard();
+  resetArtCardImageTransform();
+};
 
 const { buildWorld, rebuildSceneFromConfig, loadShowConfig, createNewCatalogPainting, importCatalogWorks } = createSceneConfigController({
   app: appContext,
@@ -1042,6 +1069,7 @@ async function init() {
   buildWorld(config);
   attachInput();
   attachArtEditTabs();
+  attachArtCardImageZoom();
   attachConfigPanel();
   syncConfigPanelFromConfig();
   appShell.classList.toggle("hide-config", !showConfigPanel);
@@ -1055,6 +1083,183 @@ async function init() {
   });
 
   animate();
+}
+
+function getArtCardImageBaseSize() {
+  const width = Math.max(1, artCardImage.clientWidth || artCardImage.naturalWidth || 1);
+  const height = Math.max(1, artCardImage.clientHeight || artCardImage.naturalHeight || 1);
+  return { width, height };
+}
+
+function clampArtCardImageTranslation(scale: number, translateX: number, translateY: number) {
+  const viewportWidth = Math.max(1, artCardImageViewport.clientWidth || 1);
+  const viewportHeight = Math.max(1, artCardImageViewport.clientHeight || 1);
+  const baseSize = getArtCardImageBaseSize();
+  const maxOffsetX = Math.max(0, (baseSize.width * scale - viewportWidth) * 0.5);
+  const maxOffsetY = Math.max(0, (baseSize.height * scale - viewportHeight) * 0.5);
+  return {
+    x: clampNumber(translateX, -maxOffsetX, maxOffsetX),
+    y: clampNumber(translateY, -maxOffsetY, maxOffsetY),
+  };
+}
+
+function applyArtCardImageTransform() {
+  const clamped = clampArtCardImageTranslation(artCardImageScale, artCardImageTranslateX, artCardImageTranslateY);
+  artCardImageTranslateX = clamped.x;
+  artCardImageTranslateY = clamped.y;
+  artCardImage.style.transform = `translate3d(${artCardImageTranslateX}px, ${artCardImageTranslateY}px, 0) scale(${artCardImageScale})`;
+  artCardImageViewport.style.cursor = artCardImageScale > 1.02 ? "grab" : "zoom-in";
+}
+
+function resetArtCardImageTransform() {
+  artCardImageScale = 1;
+  artCardImageTranslateX = 0;
+  artCardImageTranslateY = 0;
+  activeArtCardPointers.clear();
+  artCardPanPointerId = null;
+  artCardPinchStartDistance = 0;
+  applyArtCardImageTransform();
+}
+
+function zoomArtCardImageAt(nextScaleRaw: number, originClientX: number, originClientY: number) {
+  const nextScale = clampNumber(nextScaleRaw, ART_CARD_IMAGE_MIN_SCALE, ART_CARD_IMAGE_MAX_SCALE);
+  const previousScale = artCardImageScale;
+  if (Math.abs(nextScale - previousScale) < 0.001) {
+    return;
+  }
+  const viewportRect = artCardImageViewport.getBoundingClientRect();
+  const focalX = originClientX - viewportRect.left - viewportRect.width * 0.5;
+  const focalY = originClientY - viewportRect.top - viewportRect.height * 0.5;
+  const scaleRatio = nextScale / previousScale;
+  artCardImageTranslateX = (artCardImageTranslateX - focalX) * scaleRatio + focalX;
+  artCardImageTranslateY = (artCardImageTranslateY - focalY) * scaleRatio + focalY;
+  artCardImageScale = nextScale;
+  if (artCardImageScale <= 1.001) {
+    artCardImageTranslateX = 0;
+    artCardImageTranslateY = 0;
+  }
+  applyArtCardImageTransform();
+}
+
+function attachArtCardImageZoom() {
+  const readPointerValues = () => Array.from(activeArtCardPointers.values());
+  const getDistanceAndMidpoint = () => {
+    const [first, second] = readPointerValues();
+    if (!first || !second) {
+      return null;
+    }
+    return {
+      distance: Math.hypot(second.x - first.x, second.y - first.y),
+      midX: (first.x + second.x) * 0.5,
+      midY: (first.y + second.y) * 0.5,
+    };
+  };
+
+  artCardImageViewport.addEventListener("wheel", (event) => {
+    if (artCard.hidden || artCard.classList.contains("is-editing")) {
+      return;
+    }
+    event.preventDefault();
+    const delta = event.deltaY < 0 ? 1.18 : 1 / 1.18;
+    zoomArtCardImageAt(artCardImageScale * delta, event.clientX, event.clientY);
+  }, { passive: false });
+
+  artCardImageViewport.addEventListener("dblclick", (event) => {
+    if (artCard.hidden || artCard.classList.contains("is-editing")) {
+      return;
+    }
+    event.preventDefault();
+    if (artCardImageScale > 1.02) {
+      resetArtCardImageTransform();
+      return;
+    }
+    zoomArtCardImageAt(2, event.clientX, event.clientY);
+  });
+
+  artCardImageViewport.addEventListener("pointerdown", (event) => {
+    if (artCard.hidden || artCard.classList.contains("is-editing")) {
+      return;
+    }
+    activeArtCardPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    artCardImageViewport.setPointerCapture(event.pointerId);
+    if (activeArtCardPointers.size === 1 && artCardImageScale > 1.02) {
+      artCardPanPointerId = event.pointerId;
+      artCardPanStartTranslateX = artCardImageTranslateX;
+      artCardPanStartTranslateY = artCardImageTranslateY;
+      artCardPanStartX = event.clientX;
+      artCardPanStartY = event.clientY;
+      artCardImageViewport.style.cursor = "grabbing";
+    } else if (activeArtCardPointers.size === 2) {
+      const pinch = getDistanceAndMidpoint();
+      if (pinch) {
+        artCardPanPointerId = null;
+        artCardPinchStartDistance = pinch.distance;
+        artCardPinchStartScale = artCardImageScale;
+        artCardPinchStartTranslateX = artCardImageTranslateX;
+        artCardPinchStartTranslateY = artCardImageTranslateY;
+        artCardPinchStartMidX = pinch.midX;
+        artCardPinchStartMidY = pinch.midY;
+      }
+    }
+  });
+
+  artCardImageViewport.addEventListener("pointermove", (event) => {
+    if (!activeArtCardPointers.has(event.pointerId) || artCard.hidden || artCard.classList.contains("is-editing")) {
+      return;
+    }
+    activeArtCardPointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (activeArtCardPointers.size >= 2) {
+      const pinch = getDistanceAndMidpoint();
+      if (!pinch || artCardPinchStartDistance <= 0) {
+        return;
+      }
+      artCardImageScale = clampNumber(
+        artCardPinchStartScale * (pinch.distance / artCardPinchStartDistance),
+        ART_CARD_IMAGE_MIN_SCALE,
+        ART_CARD_IMAGE_MAX_SCALE
+      );
+      artCardImageTranslateX = artCardPinchStartTranslateX + (pinch.midX - artCardPinchStartMidX);
+      artCardImageTranslateY = artCardPinchStartTranslateY + (pinch.midY - artCardPinchStartMidY);
+      if (artCardImageScale <= 1.001) {
+        artCardImageTranslateX = 0;
+        artCardImageTranslateY = 0;
+      }
+      applyArtCardImageTransform();
+      return;
+    }
+    if (artCardPanPointerId !== event.pointerId || artCardImageScale <= 1.02) {
+      return;
+    }
+    artCardImageTranslateX = artCardPanStartTranslateX + (event.clientX - artCardPanStartX);
+    artCardImageTranslateY = artCardPanStartTranslateY + (event.clientY - artCardPanStartY);
+    applyArtCardImageTransform();
+  });
+
+  const releasePointer = (event: PointerEvent) => {
+    activeArtCardPointers.delete(event.pointerId);
+    if (artCardImageViewport.hasPointerCapture(event.pointerId)) {
+      artCardImageViewport.releasePointerCapture(event.pointerId);
+    }
+    if (activeArtCardPointers.size < 2) {
+      artCardPinchStartDistance = 0;
+    }
+    if (artCardPanPointerId === event.pointerId) {
+      artCardPanPointerId = null;
+    }
+    applyArtCardImageTransform();
+  };
+
+  artCardImageViewport.addEventListener("pointerup", releasePointer);
+  artCardImageViewport.addEventListener("pointercancel", releasePointer);
+  artCardImageViewport.addEventListener("pointerleave", (event) => {
+    if (event.pointerType !== "mouse") {
+      return;
+    }
+    releasePointer(event);
+  });
+  artCardImage.addEventListener("load", () => {
+    resetArtCardImageTransform();
+  });
 }
 
 function applyVisitorConfig(visitorCfg: import("./gallery/types").VisitorConfig = {}) {
