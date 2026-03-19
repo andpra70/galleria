@@ -83,8 +83,11 @@ export function createPaintingCardController(deps: PaintingCardControllerDeps) {
     artEditDomElements.artEditCenterYCm.value = String(Math.round(mToCm(painting.centerY ?? 1.65)));
     artEditDomElements.artEditImageUrl.value = painting.image ?? "";
     artEditDomElements.artEditAudioStatus.textContent = (painting.audioMp4 ?? "").trim() ? "Audio MP4 incorporato" : "Nessun audio";
+    artEditDomElements.artEditAudioToggle.textContent = "Play audio";
+    artEditDomElements.artEditAudioToggle.disabled = !(painting.audioMp4 ?? "").trim();
     artEditDomElements.artEditAudioClear.disabled = !(painting.audioMp4 ?? "").trim();
     artEditDomElements.artEditAudioFile.value = "";
+    artEditDomElements.artEditAudioDropZone.classList.remove("is-drop-target");
     fillSynopsisFieldsDom(artEditDomElements.artEditSynopsisList, painting.synopsis ?? {});
     artEditDomElements.artEditDelete.disabled = !placedEntry;
     artEditDomElements.artEditMoveLeft.disabled = !placedEntry;

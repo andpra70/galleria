@@ -136,9 +136,11 @@ const artEditFrameColor = mustEl<HTMLInputElement>("art-edit-frame-color");
 const artEditCenterYCm = mustEl<HTMLInputElement>("art-edit-center-y-cm");
 const artEditImageUrl = mustEl<HTMLInputElement>("art-edit-image-url");
 const artEditAudioStatus = mustEl<HTMLElement>("art-edit-audio-status");
+const artEditAudioToggle = mustEl<HTMLButtonElement>("art-edit-audio-toggle");
 const artEditAudioUpload = mustEl<HTMLButtonElement>("art-edit-audio-upload");
 const artEditAudioClear = mustEl<HTMLButtonElement>("art-edit-audio-clear");
 const artEditAudioFile = mustEl<HTMLInputElement>("art-edit-audio-file");
+const artEditAudioDropZone = mustEl<HTMLElement>("art-edit-audio-drop-zone");
 const artEditSynopsisList = mustEl<HTMLElement>("art-edit-synopsis-list");
 const artEditSynopsisAdd = mustEl<HTMLButtonElement>("art-edit-synopsis-add");
 const artEditMoveLeft = mustEl<HTMLButtonElement>("art-edit-move-left");
@@ -584,9 +586,11 @@ const artEditDomElements = {
   artEditCenterYCm,
   artEditImageUrl,
   artEditAudioStatus,
+  artEditAudioToggle,
   artEditAudioUpload,
   artEditAudioClear,
   artEditAudioFile,
+  artEditAudioDropZone,
   artEditSynopsisList,
   artEditDelete,
   artEditMoveLeft,
@@ -907,9 +911,11 @@ const paintingEditorHandlers = createPaintingEditorHandlers({
     artCardImage,
     artEditImageUrl,
     artEditAudioStatus,
+    artEditAudioToggle,
     artEditAudioUpload,
     artEditAudioClear,
     artEditAudioFile,
+    artEditAudioDropZone,
     artEditSynopsisList,
     artCardDomElements,
   },
@@ -6265,12 +6271,8 @@ function attachInput() {
     }
   );
   artEditAudioUpload.addEventListener("click", paintingEditorHandlers.onAudioUploadClick);
-  artEditAudioFile.addEventListener("change", () => {
-    void paintingEditorHandlers.onAudioFileChange();
-  });
-  artEditAudioClear.addEventListener("click", paintingEditorHandlers.onAudioClear);
-  artCardAudioToggle.addEventListener("click", async () => {
-    if (artCardAudioToggle.hidden || !(artCardAudio.src || "").trim()) {
+  artEditAudioToggle.addEventListener("click", async () => {
+    if (artEditAudioToggle.disabled || !(artCardAudio.src || "").trim()) {
       return;
     }
     if (artCardAudio.paused) {
@@ -6279,6 +6281,7 @@ function attachInput() {
         artCardAudioToggle.dataset.playing = "true";
         artCardAudioToggle.textContent = "■";
         artCardAudioToggle.title = "Ferma audio opera";
+        artEditAudioToggle.textContent = "Stop audio";
       } catch (error) {
         console.warn("Impossibile riprodurre l'audio dell'opera", error);
       }
@@ -6289,11 +6292,45 @@ function attachInput() {
     artCardAudioToggle.dataset.playing = "false";
     artCardAudioToggle.textContent = "🔊";
     artCardAudioToggle.title = "Riproduci audio opera";
+    artEditAudioToggle.textContent = "Play audio";
+  });
+  artEditAudioFile.addEventListener("change", () => {
+    void paintingEditorHandlers.onAudioFileChange();
+  });
+  artEditAudioClear.addEventListener("click", paintingEditorHandlers.onAudioClear);
+  artEditAudioDropZone.addEventListener("dragover", paintingEditorHandlers.onAudioDropZoneDragOver);
+  artEditAudioDropZone.addEventListener("dragleave", paintingEditorHandlers.onAudioDropZoneDragLeave);
+  artEditAudioDropZone.addEventListener("drop", (event) => {
+    void paintingEditorHandlers.onAudioDropZoneDrop(event);
+  });
+  artCardAudioToggle.addEventListener("click", async () => {
+    if (artCardAudioToggle.hidden || !(artCardAudio.src || "").trim()) {
+      return;
+    }
+    if (artCardAudio.paused) {
+      try {
+        await artCardAudio.play();
+        artCardAudioToggle.dataset.playing = "true";
+        artCardAudioToggle.textContent = "■";
+        artCardAudioToggle.title = "Ferma audio opera";
+        artEditAudioToggle.textContent = "Stop audio";
+      } catch (error) {
+        console.warn("Impossibile riprodurre l'audio dell'opera", error);
+      }
+      return;
+    }
+    artCardAudio.pause();
+    artCardAudio.currentTime = 0;
+    artCardAudioToggle.dataset.playing = "false";
+    artCardAudioToggle.textContent = "🔊";
+    artCardAudioToggle.title = "Riproduci audio opera";
+    artEditAudioToggle.textContent = "Play audio";
   });
   artCardAudio.addEventListener("ended", () => {
     artCardAudioToggle.dataset.playing = "false";
     artCardAudioToggle.textContent = "🔊";
     artCardAudioToggle.title = "Riproduci audio opera";
+    artEditAudioToggle.textContent = "Play audio";
   });
   artCardAudio.addEventListener("pause", () => {
     if (artCardAudio.ended) {
@@ -6302,5 +6339,6 @@ function attachInput() {
     artCardAudioToggle.dataset.playing = "false";
     artCardAudioToggle.textContent = "🔊";
     artCardAudioToggle.title = "Riproduci audio opera";
+    artEditAudioToggle.textContent = "Play audio";
   });
 }

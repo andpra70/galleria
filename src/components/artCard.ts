@@ -35,6 +35,15 @@ export function renderArtCard() {
             >
               Synopsis
             </button>
+            <button
+              type="button"
+              class="art-edit-tab"
+              role="tab"
+              aria-selected="false"
+              data-art-edit-tab="audio"
+            >
+              Audio
+            </button>
           </div>
 
           <section class="art-edit-tab-panel active" data-art-edit-tab-panel="general" role="tabpanel">
@@ -65,14 +74,6 @@ export function renderArtCard() {
             <input id="art-edit-center-y-cm" type="number" min="1" max="10000" step="1" />
             <label class="edit-field" for="art-edit-image-url">URL immagine</label>
             <input id="art-edit-image-url" type="text" />
-            <div class="art-edit-audio-row">
-              <span id="art-edit-audio-status" class="edit-field">Nessun audio</span>
-              <div class="art-edit-audio-actions">
-                <button id="art-edit-audio-upload" type="button">Carica audio MP4</button>
-                <button id="art-edit-audio-clear" type="button">Rimuovi audio</button>
-              </div>
-              <input id="art-edit-audio-file" type="file" accept=".mp4,audio/mp4,video/mp4,audio/x-m4a,.m4a" hidden />
-            </div>
             <div id="art-edit-actions">
               <button id="art-edit-move-left" type="button">← Sinistra</button>
               <button id="art-edit-move-right" type="button">Destra →</button>
@@ -101,6 +102,20 @@ export function renderArtCard() {
             <label class="edit-field">Synopsis</label>
             <div id="art-edit-synopsis-list"></div>
             <button id="art-edit-synopsis-add" type="button">+ Aggiungi campo</button>
+          </section>
+
+          <section class="art-edit-tab-panel" data-art-edit-tab-panel="audio" role="tabpanel" hidden>
+            <div id="art-edit-audio-drop-zone" class="art-edit-audio-drop-zone">
+              <strong>Audio opera</strong>
+              <span id="art-edit-audio-status" class="edit-field">Nessun audio</span>
+              <div class="art-edit-audio-actions">
+                <button id="art-edit-audio-toggle" type="button">Play audio</button>
+                <button id="art-edit-audio-upload" type="button">Carica audio MP4</button>
+                <button id="art-edit-audio-clear" type="button">Rimuovi audio</button>
+              </div>
+              <p class="art-edit-audio-help">Trascina qui un file MP4/M4A oppure usa il pulsante di caricamento.</p>
+              <input id="art-edit-audio-file" type="file" accept=".mp3,audio/mpeg,.mp4,audio/mp4,video/mp4,audio/x-m4a,.m4a" hidden />
+            </div>
           </section>
         </div>
       </div>

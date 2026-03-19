@@ -64,7 +64,9 @@ export function resetEditPanelDom(elements: ArtEditDomElements) {
     artEditCenterYCm,
     artEditImageUrl,
     artEditAudioStatus,
+    artEditAudioToggle,
     artEditAudioFile,
+    artEditAudioDropZone,
     artEditSynopsisList,
     artEditDelete,
     artEditMoveLeft,
@@ -90,7 +92,10 @@ export function resetEditPanelDom(elements: ArtEditDomElements) {
   artEditCenterYCm.value = "";
   artEditImageUrl.value = "";
   artEditAudioStatus.textContent = "Nessun audio";
+  artEditAudioToggle.textContent = "Play audio";
+  artEditAudioToggle.disabled = true;
   artEditAudioFile.value = "";
+  artEditAudioDropZone.classList.remove("is-drop-target");
   artEditSynopsisList.innerHTML = "";
   artEditDelete.disabled = false;
   artEditMoveLeft.disabled = false;

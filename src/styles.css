@@ -808,16 +808,16 @@ body,
     "close"
     "image"
     "info";
-  grid-template-rows: auto minmax(280px, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
 }
 
 #art-card:not(.is-editing).art-layout-vertical {
   grid-template-areas:
-    "close close"
-    "image info";
-  grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr);
-  grid-template-rows: auto minmax(0, 1fr);
-  align-items: start;
+    "close"
+    "image"
+    "info";
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 #filmstrip {
@@ -944,6 +944,8 @@ body,
   display: grid;
   place-items: center;
   min-height: 0;
+  min-width: 0;
+  align-self: stretch;
   overflow: hidden;
   background: transparent;
   touch-action: none;
@@ -955,7 +957,8 @@ body,
   width: 100%;
   height: auto;
   min-height: 0;
-  max-height: min(58vh, 680px);
+  max-width: 100%;
+  max-height: calc(100vh - 170px);
   object-fit: contain;
   object-position: center;
   border-radius: 8px;
@@ -980,6 +983,7 @@ body,
   min-height: 0;
   max-height: none;
   overflow: visible;
+  padding-bottom: 8px;
 }
 
 #art-card.is-editing {
@@ -1051,13 +1055,14 @@ body,
   flex: 0 0 auto;
   border: 0;
   border-radius: 999px;
-  width: 38px;
-  height: 38px;
+  width: 42px;
+  height: 42px;
   background: #0f766e;
   color: #ffffff;
-  font-size: 1rem;
+  font-size: 1.05rem;
   line-height: 1;
   cursor: pointer;
+  box-shadow: 0 8px 18px rgba(15, 118, 110, 0.24);
 }
 
 #art-card-audio-toggle[hidden] {
@@ -1237,13 +1242,34 @@ label[for="art-edit-image-url"] {
   gap: 6px;
 }
 
+.art-edit-audio-drop-zone {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px dashed rgba(148, 163, 184, 0.55);
+  background: rgba(248, 250, 252, 0.92);
+}
+
+.art-edit-audio-drop-zone.is-drop-target {
+  border-color: #0f766e;
+  background: rgba(240, 253, 250, 0.96);
+}
+
 .art-edit-audio-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
+.art-edit-audio-help {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #475569;
+}
+
 #art-edit-audio-upload,
+#art-edit-audio-toggle,
 #art-edit-audio-clear {
   border: 0;
   border-radius: 8px;
@@ -1252,6 +1278,7 @@ label[for="art-edit-image-url"] {
   cursor: pointer;
 }
 
+#art-edit-audio-toggle,
 #art-edit-audio-upload {
   background: #0f766e;
   color: #ffffff;
@@ -1263,6 +1290,11 @@ label[for="art-edit-image-url"] {
 }
 
 #art-edit-audio-clear:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+#art-edit-audio-toggle:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }

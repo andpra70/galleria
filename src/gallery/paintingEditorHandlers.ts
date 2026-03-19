@@ -9,9 +9,11 @@ type PaintingEditorHandlersDeps = {
     artCardImage: HTMLImageElement;
     artEditImageUrl: HTMLInputElement;
     artEditAudioStatus: HTMLElement;
+    artEditAudioToggle: HTMLButtonElement;
     artEditAudioUpload: HTMLButtonElement;
     artEditAudioClear: HTMLButtonElement;
     artEditAudioFile: HTMLInputElement;
+    artEditAudioDropZone: HTMLElement;
     artEditSynopsisList: HTMLElement;
     artCardDomElements: ArtCardDomElements;
   };
@@ -41,7 +43,18 @@ export function createPaintingEditorHandlers(deps: PaintingEditorHandlersDeps) {
     numeric,
     actions,
   } = deps;
-  const { artCardImage, artEditImageUrl, artEditAudioStatus, artEditAudioUpload, artEditAudioClear, artEditAudioFile, artEditSynopsisList, artCardDomElements } = dom;
+  const {
+    artCardImage,
+    artEditImageUrl,
+    artEditAudioStatus,
+    artEditAudioToggle,
+    artEditAudioUpload,
+    artEditAudioClear,
+    artEditAudioFile,
+    artEditAudioDropZone,
+    artEditSynopsisList,
+    artCardDomElements,
+  } = dom;
   const { PAINTING_SNAP_M, snapToStep } = numeric;
   const {
     clampPaintingOffset,
@@ -79,7 +92,63 @@ export function createPaintingEditorHandlers(deps: PaintingEditorHandlersDeps) {
   function syncAudioControls(painting: GalleryPainting | null | undefined) {
     const hasAudio = Boolean((painting?.audioMp4 ?? "").trim());
     artEditAudioStatus.textContent = hasAudio ? "Audio MP4 incorporato" : "Nessun audio";
+    artEditAudioToggle.disabled = !hasAudio;
+    if (!hasAudio) {
+      artEditAudioToggle.textContent = "Play audio";
+    }
     artEditAudioClear.disabled = !hasAudio;
+  }
+
+  function getFirstAudioFile(source: DataTransfer | FileList | null | undefined) {
+    const files = source instanceof FileList ? Array.from(source) : Array.from(source?.files ?? []);
+    return files.find((file) => {
+      const type = (file.type || "").toLowerCase();
+      return type === "audio/mpeg" || type === "audio/mp4" || type === "video/mp4" || /\.mp3$/i.test(file.name) || /\.m4a$/i.test(file.name) || /\.mp4$/i.test(file.name);
+    }) ?? null;
+  }
+
+  async function applyAudioFile(file: File | null) {
+    if (!uiState.editMode || !cardState.paintingId || !file) {
+      if (artEditAudioFile) {
+        artEditAudioFile.value = "";
+      }
+      return;
+    }
+    const isSupportedAudio =
+      file.type === "audio/mpeg" ||
+      file.type === "audio/mp4" ||
+      file.type === "video/mp4" ||
+      /\.mp3$/i.test(file.name) ||
+      /\.m4a$/i.test(file.name) ||
+      /\.mp4$/i.test(file.name);
+    if (!isSupportedAudio) {
+      artEditAudioStatus.textContent = "Formato non supportato: usa MP3, MP4 o M4A";
+      artEditAudioFile.value = "";
+      return;
+    }
+    try {
+      const audioDataUrl = await readFileAsDataUrl(file);
+      const entry = paintingRegistry.get(cardState.paintingId ?? "");
+      const painting = entry?.painting ?? paintings().find((candidate: GalleryPainting) => candidate.id === cardState.paintingId) ?? null;
+      if (!painting) {
+        artEditAudioFile.value = "";
+        return;
+      }
+      painting.audioMp4 = audioDataUrl;
+      syncAudioControls(painting);
+      if (entry) {
+        entry.paintingSpot.audioMp4 = audioDataUrl;
+        renderPaintingCardContentDom(artCardDomElements, entry.paintingSpot);
+        showEditPanelForEntry(entry);
+      } else {
+        openCatalogPainting(painting);
+      }
+      renderFilmstrip();
+    } catch (error) {
+      console.warn("Impossibile importare l'audio dell'opera", error);
+      artEditAudioStatus.textContent = "Errore import audio";
+    }
+    artEditAudioFile.value = "";
   }
 
   function onEditMove(deltaOffsetDir: number, deltaHeightDir: number) {
@@ -196,43 +265,7 @@ export function createPaintingEditorHandlers(deps: PaintingEditorHandlersDeps) {
   }
 
   async function onAudioFileChange() {
-    if (!uiState.editMode || !cardState.paintingId) {
-      artEditAudioFile.value = "";
-      return;
-    }
-    const file = artEditAudioFile.files?.[0];
-    if (!file) {
-      return;
-    }
-    const isMp4 = file.type === "audio/mp4" || file.type === "video/mp4" || /\.m4a$/i.test(file.name) || /\.mp4$/i.test(file.name);
-    if (!isMp4) {
-      artEditAudioStatus.textContent = "Formato non supportato: usa MP4/M4A";
-      artEditAudioFile.value = "";
-      return;
-    }
-    try {
-      const audioDataUrl = await readFileAsDataUrl(file);
-      const entry = paintingRegistry.get(cardState.paintingId ?? "");
-      const painting = entry?.painting ?? paintings().find((candidate: GalleryPainting) => candidate.id === cardState.paintingId) ?? null;
-      if (!painting) {
-        artEditAudioFile.value = "";
-        return;
-      }
-      painting.audioMp4 = audioDataUrl;
-      syncAudioControls(painting);
-      if (entry) {
-        entry.paintingSpot.audioMp4 = audioDataUrl;
-        renderPaintingCardContentDom(artCardDomElements, entry.paintingSpot);
-        showEditPanelForEntry(entry);
-      } else {
-        openCatalogPainting(painting);
-      }
-      renderFilmstrip();
-    } catch (error) {
-      console.warn("Impossibile importare l'audio dell'opera", error);
-      artEditAudioStatus.textContent = "Errore import audio";
-    }
-    artEditAudioFile.value = "";
+    await applyAudioFile(artEditAudioFile.files?.[0] ?? null);
   }
 
   function onAudioClear() {
@@ -256,6 +289,28 @@ export function createPaintingEditorHandlers(deps: PaintingEditorHandlersDeps) {
     renderFilmstrip();
   }
 
+  function onAudioDropZoneDragOver(event: DragEvent) {
+    if (!uiState.editMode || artCard.hidden || !getFirstAudioFile(event.dataTransfer)) {
+      return;
+    }
+    event.preventDefault();
+    artEditAudioDropZone.classList.add("is-drop-target");
+  }
+
+  function onAudioDropZoneDragLeave(event: DragEvent) {
+    event.preventDefault();
+    artEditAudioDropZone.classList.remove("is-drop-target");
+  }
+
+  async function onAudioDropZoneDrop(event: DragEvent) {
+    if (!uiState.editMode || artCard.hidden) {
+      return;
+    }
+    event.preventDefault();
+    artEditAudioDropZone.classList.remove("is-drop-target");
+    await applyAudioFile(getFirstAudioFile(event.dataTransfer));
+  }
+
   return {
     onEditMove,
     onEditDelete,
@@ -267,5 +322,8 @@ export function createPaintingEditorHandlers(deps: PaintingEditorHandlersDeps) {
     onAudioUploadClick,
     onAudioFileChange,
     onAudioClear,
+    onAudioDropZoneDragOver,
+    onAudioDropZoneDragLeave,
+    onAudioDropZoneDrop,
   };
 }
