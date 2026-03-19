@@ -13,6 +13,7 @@ export function renderAppShell() {
         <canvas id="scene"></canvas>
         ${renderHud()}
       </section>
+      <div id="toast-host" aria-live="polite" aria-atomic="true"></div>
     </div>
   `;
 }

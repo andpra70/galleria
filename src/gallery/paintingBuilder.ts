@@ -1,6 +1,6 @@
 import * as THREE_NS from "three";
 import type { AppContext } from "./appServices";
-import { resolveAppUrl } from "./url";
+import { isBlobUrl, resolveAppUrl } from "./url";
 import type {
   GalleryPainting,
   PaintingCanvasMesh,
@@ -95,6 +95,11 @@ export function createPaintingBuilder(deps: PaintingBuilderDeps) {
         const fallbackImage = getNoImagePlaceholder();
         if (entry && fallbackImage && activeImage !== fallbackImage) {
           applyPaintingImage(entry, fallbackImage, false);
+          entry.hasSourceImage = false;
+          return;
+        }
+        if (entry && isBlobUrl(sourceImage)) {
+          entry.painting.image = "";
           entry.hasSourceImage = false;
         }
       }

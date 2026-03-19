@@ -1,7 +1,18 @@
 import * as THREE_NS from "three";
-import { getFirstJsonFile } from "./files";
+import { getFirstJsonFile, getImageFiles, hasImagePayload } from "./files";
+import {
+  createFileserverClient,
+  extractFileserverTextContent,
+  getFileserverBaseName,
+  getFileserverDirectoryPath,
+  hasFileserverDirectoryChild,
+} from "./fileserverClient";
+import { applyImportedFileMetadataToPainting } from "./importedPaintingMetadata";
+import { optimizeImportedPaintingImage } from "./importedPaintingImage";
+import { inferProjectNameFromFilePath, normalizeProjectName, projectNameToFilename, projectNameToFileserverPath } from "./projectName";
+import { isBlobUrl } from "./url";
 import type { AppContext } from "./appServices";
-import type { PaintingRegistryEntry, PaintingSpot } from "./types";
+import type { GalleryPainting, PaintingRegistryEntry, PaintingSpot } from "./types";
 
 type PaintingInteractionsApi = {
   startPaintingDrag: (clientX: number, clientY: number, pointerType: "mouse" | "touch") => boolean;
@@ -30,6 +41,7 @@ type InputEventHandlersDeps = {
   app: AppContext;
   MIN_PITCH: number;
   MAX_PITCH: number;
+  createNewCatalogPainting: () => GalleryPainting;
   paintingInteractions: PaintingInteractionsApi;
   applyPaintingImage: (entry: PaintingRegistryEntry, imageUrl: string, isObjectUrl?: boolean) => void;
   closePaintingCard: () => void;
@@ -50,6 +62,7 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
     app,
     MIN_PITCH,
     MAX_PITCH,
+    createNewCatalogPainting,
     paintingInteractions,
     applyPaintingImage,
     closePaintingCard,
@@ -68,6 +81,9 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
   const { paintingPickMeshes, paintingRegistry } = app.collections;
   const { minimapClientToWorld } = app.helpers;
   const { clampToWalkable, moveVisitorTo, setPointerRay, placeCatalogPaintingAtWall, handleWallCreateClick, handleFloorMove } = actions;
+  const saveProgressEl = configPanel.querySelector<HTMLElement>("#config-save-progress");
+  const saveButtonEl = configPanel.querySelector<HTMLButtonElement>("#config-save-local");
+  const toastHostEl = document.getElementById("toast-host");
   let lastTapTimeMs = 0;
   let lastTapX = 0;
   let lastTapY = 0;
@@ -83,6 +99,36 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
       console.debug("[walk]", ...args);
     }
   };
+
+  function setSaveProgress(message: string, state: "idle" | "busy" | "error" = "idle") {
+    if (saveProgressEl) {
+      saveProgressEl.textContent = message;
+      saveProgressEl.classList.toggle("busy", state === "busy");
+      saveProgressEl.classList.toggle("error", state === "error");
+    }
+    if (saveButtonEl) {
+      saveButtonEl.disabled = state === "busy";
+      saveButtonEl.textContent = state === "busy" ? "Salvataggio..." : "Salva";
+      saveButtonEl.setAttribute("aria-busy", state === "busy" ? "true" : "false");
+    }
+  }
+
+  function showToast(message: string, tone: "success" | "error" = "success") {
+    if (!toastHostEl) {
+      return;
+    }
+    const toast = document.createElement("div");
+    toast.className = `toast ${tone}`;
+    toast.textContent = message;
+    toastHostEl.appendChild(toast);
+    window.setTimeout(() => {
+      toast.style.opacity = "0";
+      toast.style.transform = "translateY(8px)";
+    }, 2600);
+    window.setTimeout(() => {
+      toast.remove();
+    }, 2900);
+  }
 
   function isCatalogPayload(value: unknown): boolean {
     if (!value || typeof value !== "object") {
@@ -111,63 +157,99 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
     );
   }
 
-  const LOCAL_SHOW_DB_NAME = "galleria_show_local_db";
-  const LOCAL_SHOW_DB_VERSION = 1;
-  const LOCAL_SHOW_STORE_NAME = "show_configs";
-  const LOCAL_SHOW_KEY = "current_show";
+  const DEFAULT_FILESERVER_API_BASE = (import.meta.env.VITE_FILESERVER_API_BASE || "/fileserver/api").trim();
+  const DEFAULT_FILESERVER_SHOW_DIRECTORY = (import.meta.env.VITE_FILESERVER_SHOW_DIRECTORY || "galleria").trim();
 
-  function openLocalShowDb() {
-    return new Promise<IDBDatabase>((resolve, reject) => {
-      const request = window.indexedDB.open(LOCAL_SHOW_DB_NAME, LOCAL_SHOW_DB_VERSION);
-      request.onupgradeneeded = () => {
-        const db = request.result;
-        if (!db.objectStoreNames.contains(LOCAL_SHOW_STORE_NAME)) {
-          db.createObjectStore(LOCAL_SHOW_STORE_NAME);
-        }
-      };
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error ?? new Error("Errore apertura IndexedDB"));
+  function createPersistableShowConfig() {
+    const cloned = JSON.parse(JSON.stringify(status.refs.getConfig()));
+    cloned.projectName = normalizeProjectName(cloned.projectName);
+    cloned.paintings = Array.isArray(cloned.paintings) ? cloned.paintings : [];
+    cloned.paintings.forEach((painting: { image?: unknown }) => {
+      if (typeof painting.image === "string" && isBlobUrl(painting.image)) {
+        painting.image = "";
+      }
     });
+    return cloned;
   }
 
-  async function saveCurrentShowToLocalDb() {
-    const db = await openLocalShowDb();
-    try {
-      await new Promise<void>((resolve, reject) => {
-        const tx = db.transaction(LOCAL_SHOW_STORE_NAME, "readwrite");
-        const store = tx.objectStore(LOCAL_SHOW_STORE_NAME);
-        const cloned = JSON.parse(JSON.stringify(status.refs.getConfig()));
-        store.put(cloned, LOCAL_SHOW_KEY);
-        tx.oncomplete = () => resolve();
-        tx.onabort = () => reject(tx.error ?? new Error("Transazione IndexedDB annullata"));
-        tx.onerror = () => reject(tx.error ?? new Error("Errore scrittura IndexedDB"));
-      });
-    } finally {
-      db.close();
+  function getCurrentProjectName() {
+    return normalizeProjectName(status.refs.getConfig().projectName);
+  }
+
+  function getFileserverShowPath() {
+    return projectNameToFileserverPath(getCurrentProjectName(), DEFAULT_FILESERVER_SHOW_DIRECTORY);
+  }
+
+  function createShowFileserverClient() {
+    return createFileserverClient({ apiBase: DEFAULT_FILESERVER_API_BASE });
+  }
+
+  async function ensureFileserverDirectory(client: ReturnType<typeof createFileserverClient>, filePath: string) {
+    const directoryPath = getFileserverDirectoryPath(filePath);
+    if (!directoryPath || directoryPath === "/") {
+      return;
+    }
+
+    const segments = directoryPath.split("/").filter(Boolean);
+    let parentPath = "";
+    for (const segment of segments) {
+      setSaveProgress(`Verifica cartella: ${parentPath ? `${parentPath}/` : ""}${segment}`, "busy");
+      const listing = await client.listDirectory(parentPath);
+      if (!hasFileserverDirectoryChild(listing, segment)) {
+        setSaveProgress(`Creazione cartella: ${parentPath ? `${parentPath}/` : ""}${segment}`, "busy");
+        await client.createFolder(parentPath, segment);
+      }
+      parentPath = parentPath ? `${parentPath}/${segment}` : segment;
     }
   }
 
-  async function loadShowFromLocalDb() {
-    const db = await openLocalShowDb();
+  async function saveCurrentShowToFileserver() {
+    const path = getFileserverShowPath();
+    const client = createShowFileserverClient();
+    setSaveProgress("Preparazione mostra.json", "busy");
+    const serialized = JSON.stringify(createPersistableShowConfig(), null, 2);
+    await ensureFileserverDirectory(client, path);
     try {
-      return await new Promise<unknown>((resolve, reject) => {
-        const tx = db.transaction(LOCAL_SHOW_STORE_NAME, "readonly");
-        const store = tx.objectStore(LOCAL_SHOW_STORE_NAME);
-        const request = store.get(LOCAL_SHOW_KEY);
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error ?? new Error("Errore lettura IndexedDB"));
-      });
-    } finally {
-      db.close();
+      setSaveProgress(`Scrittura file: ${getFileserverBaseName(path)}`, "busy");
+      await client.saveFileContent(path, serialized);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/ENOENT/i.test(message)) {
+        throw error;
+      }
+      setSaveProgress(`Creazione file: ${getFileserverBaseName(path)}`, "busy");
+      await client.uploadTextFile(getFileserverDirectoryPath(path), getFileserverBaseName(path), serialized);
     }
+    setSaveProgress(`Salvataggio completato:\n${path}`);
+    return path;
+  }
+
+  async function loadShowFromFileserver() {
+    const path = getFileserverShowPath();
+    const client = createShowFileserverClient();
+    let rawText: string;
+    try {
+      const response = await client.loadFileContent(path);
+      rawText = extractFileserverTextContent(response);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/File too large to edit/i.test(message)) {
+        throw error;
+      }
+      rawText = await client.loadRawFileText(path);
+    }
+    const loaded = JSON.parse(rawText) as { projectName?: unknown };
+    loaded.projectName = normalizeProjectName(loaded.projectName, inferProjectNameFromFilePath(path));
+    return loaded;
   }
 
   async function importShowJsonFromFile(file: File) {
     const raw = await file.text();
-    const loaded = JSON.parse(raw);
+    const loaded = JSON.parse(raw) as { projectName?: unknown };
     if (!app.helpers.isValidShowConfig(loaded)) {
       throw new Error("Formato mostra.json non valido");
     }
+    loaded.projectName = normalizeProjectName(loaded.projectName, inferProjectNameFromFilePath(file.name));
     loadShowConfig(loaded);
     syncConfigPanel();
   }
@@ -377,26 +459,61 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
   }
 
   function onCanvasDragOver(event: DragEvent) {
-    event.preventDefault();
+    const draggedPaintingId = event.dataTransfer?.getData("application/x-gallery-painting-id");
+    if (draggedPaintingId || hasImagePayload(event.dataTransfer)) {
+      event.preventDefault();
+    }
   }
 
-  function onCanvasDrop(event: DragEvent) {
+  async function onCanvasDrop(event: DragEvent) {
     event.preventDefault();
-    if (!uiState.editMode) {
-      return;
-    }
     const draggedPaintingId = event.dataTransfer?.getData("application/x-gallery-painting-id");
     if (draggedPaintingId) {
+      if (!uiState.editMode) {
+        return;
+      }
       if (placeCatalogPaintingAtWall(draggedPaintingId, event.clientX, event.clientY, { openCard: false })) {
         renderFilmstrip();
       }
       return;
     }
-    const file = app.helpers.getFirstImageFile(event.dataTransfer);
-    if (!file) {
+
+    const imageFiles = getImageFiles(event.dataTransfer);
+    if (!imageFiles.length) {
       return;
     }
 
+    if (!uiState.editMode) {
+      setEditMode(true);
+    }
+
+    const config = app.status.refs.getConfig();
+    const created: GalleryPainting[] = [];
+    for (const file of imageFiles) {
+      const painting = createNewCatalogPainting();
+      await applyImportedFileMetadataToPainting(painting, file);
+      config.paintings.push(painting);
+      if (!placeCatalogPaintingAtWall(painting.id, event.clientX, event.clientY, { openCard: false })) {
+        const index = config.paintings.indexOf(painting);
+        if (index >= 0) {
+          config.paintings.splice(index, 1);
+        }
+        if (painting.image && isBlobUrl(painting.image)) {
+          URL.revokeObjectURL(painting.image);
+        }
+        break;
+      }
+      created.push(painting);
+    }
+
+    if (created.length) {
+      uiState.selectedPaintingId = created[created.length - 1]?.id ?? null;
+      renderFilmstrip();
+      closePaintingCard();
+      return;
+    }
+
+    const file = imageFiles[0];
     setPointerRay(event.clientX, event.clientY);
     const paintingHits = raycaster.intersectObjects(paintingPickMeshes, false);
     if (!paintingHits.length) {
@@ -415,8 +532,10 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
     clearMovementRoute();
     movement.focusTarget = hitSpot.center.clone();
 
-    const objectUrl = URL.createObjectURL(file);
-    applyPaintingImage(entry, objectUrl, true);
+    const optimizedImage = await optimizeImportedPaintingImage(file);
+    entry.painting.aspectRatio = optimizedImage.width / optimizedImage.height;
+    applyPaintingImage(entry, optimizedImage.dataUrl, false);
+    renderFilmstrip();
     closePaintingCard();
   }
 
@@ -444,8 +563,9 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
 
     try {
       const raw = await jsonFile.text();
-      const loaded = JSON.parse(raw);
+      const loaded = JSON.parse(raw) as { projectName?: unknown };
       if (app.helpers.isValidShowConfig(loaded)) {
+        loaded.projectName = normalizeProjectName(loaded.projectName, inferProjectNameFromFilePath(jsonFile.name));
         loadShowConfig(loaded);
         syncConfigPanel();
         return;
@@ -465,15 +585,22 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
   async function onSaveLocalShow() {
     try {
       persistCameraViewConfig?.();
-      await saveCurrentShowToLocalDb();
+      const savedPath = await saveCurrentShowToFileserver();
+      if (!savedPath) {
+        setSaveProgress("");
+        return;
+      }
+      showToast(`Mostra salvata su fileserver:\n${savedPath}`, "success");
     } catch (error) {
-      console.error("Errore salvataggio locale IndexedDB:", error);
+      console.error("Errore salvataggio fileserver:", error);
+      setSaveProgress(`Errore salvataggio:\n${error instanceof Error ? error.message : String(error)}`, "error");
+      showToast(`Salvataggio fileserver fallito.\n${error instanceof Error ? error.message : String(error)}`, "error");
     }
   }
 
   async function onLoadLocalShow() {
     try {
-      const loaded = await loadShowFromLocalDb();
+      const loaded = await loadShowFromFileserver();
       if (!loaded) {
         return;
       }
@@ -482,19 +609,21 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
       }
       loadShowConfig(loaded);
       syncConfigPanel();
+      showToast(`Mostra caricata da fileserver:\n${projectNameToFileserverPath(normalizeProjectName(loaded.projectName), DEFAULT_FILESERVER_SHOW_DIRECTORY)}`, "success");
     } catch (error) {
-      console.error("Errore caricamento locale IndexedDB:", error);
+      console.error("Errore caricamento fileserver:", error);
+      showToast(`Caricamento fileserver fallito.\n${error instanceof Error ? error.message : String(error)}`, "error");
     }
   }
 
   function onExportShowJson() {
     persistCameraViewConfig?.();
-    const serialized = JSON.stringify(status.refs.getConfig(), null, 2);
+    const serialized = JSON.stringify(createPersistableShowConfig(), null, 2);
     const blob = new Blob([serialized], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "mostra.json";
+    a.download = projectNameToFilename(getCurrentProjectName());
     a.click();
     URL.revokeObjectURL(url);
   }

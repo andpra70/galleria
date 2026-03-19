@@ -5,11 +5,16 @@ export function renderConfigPanel() {
         <details id="config-actions-menu" class="config-actions-menu">
           <summary id="config-actions-menu-toggle" aria-label="Menu configurazione">☰ Menu</summary>
           <div class="config-actions-menu-list" role="menu" aria-label="Azioni configurazione">
-            <button id="config-save-local" type="button" role="menuitem" title="Salva configurazione in IndexedDB locale">Salva</button>
-            <button id="config-load-local" type="button" role="menuitem" title="Carica configurazione da IndexedDB locale">Carica</button>
+            <label class="config-field" role="none">
+              <span>Nome progetto</span>
+              <input id="config-project-name" type="text" placeholder="Nome progetto" />
+            </label>
+            <button id="config-save-local" type="button" role="menuitem" title="Salva mostra.json sul fileserver">Salva</button>
+            <button id="config-load-local" type="button" role="menuitem" title="Carica mostra.json dal fileserver">Carica</button>
             <button id="config-export-json" type="button" role="menuitem" title="Esporta mostra.json">Esporta JSON</button>
             <button id="config-import-json" type="button" role="menuitem" title="Importa mostra.json">Importa JSON</button>
             <button id="config-import-catalog-json" type="button" role="menuitem" title="Importa catalogo.json da file locale">Importa catalogo JSON</button>
+            <div id="config-save-progress" class="config-save-progress" aria-live="polite" role="status"></div>
           </div>
         </details>
         <button id="edit-mode-toggle" type="button" aria-pressed="false">✎ Edit: OFF</button>
@@ -76,6 +81,19 @@ export function renderConfigPanel() {
             <textarea id="config-where-text-md" rows="7" placeholder="## Dove&#10;Come arrivare, accessibilita, parcheggi"></textarea>
           </label>
           <div id="config-where-map" aria-label="Mappa luogo mostra"></div>
+          <section id="config-where-streetview-card" aria-label="Street View facciata">
+            <div class="config-inline-fields">
+              <strong>Street View facciata</strong>
+              <a id="config-where-streetview-link" href="#" target="_blank" rel="noreferrer noopener">Apri in Google Maps</a>
+            </div>
+            <p id="config-where-streetview-note" class="config-map-snap"></p>
+            <iframe
+              id="config-where-streetview-frame"
+              title="Anteprima Street View"
+              loading="lazy"
+              referrerpolicy="no-referrer-when-downgrade"
+            ></iframe>
+          </section>
           <div class="config-inline-fields">
             <label class="config-field">
               <span>Lat</span>
@@ -146,6 +164,24 @@ export function renderConfigPanel() {
               title="Definisci path camera"
             >
               ↝ Path
+            </button>
+            <button
+              type="button"
+              class="config-map-subtab"
+              data-gallery-map-subtab="paintings"
+              aria-selected="false"
+              title="Parametri globali opere"
+            >
+              ▣ Opere
+            </button>
+            <button
+              type="button"
+              class="config-map-subtab"
+              data-gallery-map-subtab="video"
+              aria-selected="false"
+              title="Video YouTube della mostra"
+            >
+              ▶ Video
             </button>
             <button type="button" class="config-map-toggle active" id="config-map-toggle-snap" aria-pressed="true" title="Snap a griglia 20cm">▦ Snap</button>
             <button type="button" class="config-map-toggle active" id="config-map-toggle-magnet" aria-pressed="true" title="Magnet a elementi vicini">⌖ Magnet</button>
@@ -352,6 +388,44 @@ export function renderConfigPanel() {
                 <button id="config-map-path-clear" type="button" title="Svuota tutto il path">Svuota path</button>
                 <span id="config-map-path-status" class="config-map-snap">Nessun keyframe</span>
               </div>
+            </div>
+
+            <div class="config-gallery-map-subtab-panel" data-gallery-map-subtab-panel="paintings" role="tabpanel" hidden>
+              <div class="config-inline-fields">
+                <label class="config-field">
+                  <span>Spessore bordo (cm)</span>
+                  <input id="config-map-paintings-frame-border-cm" type="number" min="0" step="1" value="6" />
+                </label>
+                <label class="config-field">
+                  <span>Colore bordo</span>
+                  <input id="config-map-paintings-frame-color" type="color" value="#423934" />
+                </label>
+              </div>
+              <div class="config-inline-fields">
+                <label class="config-field">
+                  <span>Mostra ruler</span>
+                  <input id="config-map-paintings-show-ruler" type="checkbox" />
+                </label>
+                <label class="config-field">
+                  <span>Quota ruler (cm)</span>
+                  <input id="config-map-paintings-quota-ruler-cm" type="number" min="0" step="5" value="150" />
+                </label>
+                <label class="config-field">
+                  <span>Colore ruler</span>
+                  <input id="config-map-paintings-ruler-color" type="color" value="#d3d3d3" />
+                </label>
+              </div>
+            </div>
+
+            <div class="config-gallery-map-subtab-panel" data-gallery-map-subtab-panel="video" role="tabpanel" hidden>
+              <label class="config-field">
+                <span>Link YouTube</span>
+                <input id="config-video-youtube-url" type="url" placeholder="https://www.youtube.com/watch?v=..." />
+              </label>
+              <label class="config-field">
+                <span>Testo descrittivo (Markdown)</span>
+                <textarea id="config-video-description-md" rows="8" placeholder="## Video&#10;Descrizione, contesto, note..."></textarea>
+              </label>
             </div>
           </div>
         </div>

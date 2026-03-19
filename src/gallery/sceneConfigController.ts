@@ -2,6 +2,8 @@ import * as THREE_NS from "three";
 import type { AppContext } from "./appServices";
 import type { CustomWallConfig, GalleryPainting, GalleryRoom, GalleryRoomOpening, GallerySpotLightConfig, ShowConfig, VisitorConfig } from "./types";
 import { createPaintingConfigModel } from "./paintingModels";
+import { inferProjectNameFromFilePath, normalizeProjectName } from "./projectName";
+import { isBlobUrl } from "./url";
 
 type SceneConfigControllerDeps = {
   app: AppContext;
@@ -432,6 +434,12 @@ export function createSceneConfigController(deps: SceneConfigControllerDeps) {
     const cloned = JSON.parse(JSON.stringify(nextConfig));
     cloned.rooms = Array.isArray(cloned.rooms) ? cloned.rooms : [];
     cloned.paintings = Array.isArray(cloned.paintings) ? cloned.paintings : [];
+    cloned.projectName = normalizeProjectName(cloned.projectName, inferProjectNameFromFilePath("mostra.json"));
+    cloned.paintings.forEach((painting: { image?: unknown }) => {
+      if (typeof painting.image === "string" && isBlobUrl(painting.image)) {
+        painting.image = "";
+      }
+    });
 
     status.refs.setConfig(cloned);
     cardState.paintingId = null;
@@ -450,6 +458,7 @@ export function createSceneConfigController(deps: SceneConfigControllerDeps) {
 
   function createNewCatalogPainting(): GalleryPainting {
     const cfg = status.refs.getConfig();
+    const rendering = cfg.rendering ?? {};
     const id = nextPaintingId(cfg.paintings, paintingRegistry);
     return createPaintingConfigModel({
       id,
@@ -460,6 +469,8 @@ export function createSceneConfigController(deps: SceneConfigControllerDeps) {
       widthCm: 140,
       heightCm: 105,
       placed: false,
+      frameBorderCm: Math.max(0, Number(rendering.defaultPaintingFrameBorderCm ?? 6)),
+      frameColor: typeof rendering.defaultPaintingFrameColor === "string" ? rendering.defaultPaintingFrameColor : "#423934",
       image: createPlaceholderPaintingImage("Nuova Opera"),
     });
   }
@@ -544,6 +555,7 @@ export function createSceneConfigController(deps: SceneConfigControllerDeps) {
     }
 
     const cfg = status.refs.getConfig();
+    const rendering = cfg.rendering ?? {};
     if (replaceExisting) {
       cfg.paintings = [];
       cardState.paintingId = null;
@@ -590,6 +602,8 @@ export function createSceneConfigController(deps: SceneConfigControllerDeps) {
           centerY: 1.65,
           widthCm: parsedDimensions?.widthCm ?? 140,
           heightCm: parsedDimensions?.heightCm ?? 105,
+          frameBorderCm: Math.max(0, Number(rendering.defaultPaintingFrameBorderCm ?? 6)),
+          frameColor: typeof rendering.defaultPaintingFrameColor === "string" ? rendering.defaultPaintingFrameColor : "#423934",
           placed: false,
         })
       );

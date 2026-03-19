@@ -1,5 +1,6 @@
 type InputElements = {
   canvas: HTMLCanvasElement;
+  galleryPanel: HTMLElement;
   minimapCanvas: HTMLCanvasElement;
   configPanel: HTMLElement;
   configSaveLocalBtn: HTMLButtonElement;
@@ -28,6 +29,7 @@ type InputHandlers = Record<string, (...args: any[]) => void>;
 export function attachGalleryInput(elements: InputElements, handlers: InputHandlers) {
   const {
     canvas,
+    galleryPanel,
     minimapCanvas,
     configPanel,
     configSaveLocalBtn,
@@ -117,8 +119,8 @@ export function attachGalleryInput(elements: InputElements, handlers: InputHandl
   canvas.addEventListener("touchmove", onTouchMove, { passive: false });
   canvas.addEventListener("touchend", onTouchEnd, { passive: false });
   canvas.addEventListener("touchcancel", onTouchCancel, { passive: false });
-  canvas.addEventListener("dragover", onCanvasDragOver);
-  canvas.addEventListener("drop", onCanvasDrop);
+  galleryPanel.addEventListener("dragover", onCanvasDragOver);
+  galleryPanel.addEventListener("drop", onCanvasDrop);
   minimapCanvas.addEventListener("click", onMinimapClick);
 
   configPanel.addEventListener("dragover", onConfigPanelDragOver);

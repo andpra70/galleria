@@ -159,6 +159,11 @@ export interface RenderingConfig {
   diffuseAmbient?: number;
   cameraFov?: number;
   defaultPaintingHeight?: number;
+  defaultPaintingFrameBorderCm?: number;
+  defaultPaintingFrameColor?: string;
+  showRuler?: boolean;
+  quotaRulerCm?: number;
+  rulerColor?: string;
 }
 
 export interface ExhibitionLocationConfig {
@@ -175,6 +180,8 @@ export interface ExhibitionConfig {
   doveText?: string;
   indirizzoCompleto?: string;
   introductionMd?: string;
+  videoUrl?: string;
+  videoDescriptionMd?: string;
   location?: ExhibitionLocationConfig;
 }
 
@@ -195,6 +202,7 @@ export type RenderingConfigWithFloorTexture = RenderingConfig & {
 };
 
 export interface ShowConfig {
+  projectName?: string;
   rooms: GalleryRoom[];
   paintings: GalleryPainting[];
   customWalls?: CustomWallConfig[];

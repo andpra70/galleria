@@ -30,8 +30,16 @@ import type {
   WallSide,
 } from "./gallery/types";
 import { getFirstImageFile, isValidShowConfig } from "./gallery/files";
+import { createFileserverClient } from "./gallery/fileserverClient";
 import { generatePaintingId as nextPaintingId, generateWallId } from "./gallery/idGenerators";
 import { attachGalleryInput } from "./gallery/inputBindings";
+import {
+  inferProjectNameFromFilePath,
+  normalizeProjectName,
+  persistProjectName,
+  projectNameToFileserverPath,
+  readStoredProjectName,
+} from "./gallery/projectName";
 import { resolveAppUrl } from "./gallery/url";
 import { createInputEventHandlers } from "./gallery/inputEventHandlers";
 import { createFilmstripController } from "./gallery/filmstripController";
@@ -86,6 +94,7 @@ function must2d(canvasEl: HTMLCanvasElement): CanvasRenderingContext2D {
 }
 
 const canvas = mustEl<HTMLCanvasElement>("scene");
+const galleryPanel = mustEl<HTMLElement>("gallery-panel-container");
 const minimapCanvas = mustEl<HTMLCanvasElement>("minimap");
 const dragMeasureOverlaySvg = mustEl<SVGSVGElement>("drag-measure-overlay");
 const miniCtx = must2d(minimapCanvas);
@@ -133,6 +142,7 @@ const artEditTabButtons = Array.from(document.querySelectorAll<HTMLButtonElement
 const artEditTabPanels = Array.from(document.querySelectorAll<HTMLElement>("[data-art-edit-tab-panel]"));
 const configTabButtons = Array.from(document.querySelectorAll<HTMLButtonElement>("#config-tabs .config-tab"));
 const configTabPanels = Array.from(document.querySelectorAll<HTMLElement>("[data-config-tab-panel]"));
+const configProjectName = mustEl<HTMLInputElement>("config-project-name");
 const configWhenStartDate = mustEl<HTMLInputElement>("config-when-start-date");
 const configWhenEndDate = mustEl<HTMLInputElement>("config-when-end-date");
 const configWhenTextMd = mustEl<HTMLTextAreaElement>("config-when-text-md");
@@ -145,6 +155,9 @@ const configWhereAddress = mustEl<HTMLInputElement>("config-where-address");
 const configWhereSearchBtn = mustEl<HTMLButtonElement>("config-where-search");
 const configWhereTextMd = mustEl<HTMLTextAreaElement>("config-where-text-md");
 const configWhereMap = mustEl<HTMLDivElement>("config-where-map");
+const configWhereStreetViewFrame = mustEl<HTMLIFrameElement>("config-where-streetview-frame");
+const configWhereStreetViewLink = mustEl<HTMLAnchorElement>("config-where-streetview-link");
+const configWhereStreetViewNote = mustEl<HTMLElement>("config-where-streetview-note");
 const configWhereLat = mustEl<HTMLInputElement>("config-where-lat");
 const configWhereLng = mustEl<HTMLInputElement>("config-where-lng");
 const configMapToolButtons = Array.from(document.querySelectorAll<HTMLButtonElement>(".config-map-tool"));
@@ -179,6 +192,13 @@ const configMapPathAddPointBtn = mustEl<HTMLButtonElement>("config-map-path-add-
 const configMapPathDeletePointBtn = mustEl<HTMLButtonElement>("config-map-path-delete-point");
 const configMapPathClearBtn = mustEl<HTMLButtonElement>("config-map-path-clear");
 const configMapPathStatus = mustEl<HTMLElement>("config-map-path-status");
+const configMapPaintingsFrameBorderCm = mustEl<HTMLInputElement>("config-map-paintings-frame-border-cm");
+const configMapPaintingsFrameColor = mustEl<HTMLInputElement>("config-map-paintings-frame-color");
+const configMapPaintingsShowRuler = mustEl<HTMLInputElement>("config-map-paintings-show-ruler");
+const configMapPaintingsQuotaRulerCm = mustEl<HTMLInputElement>("config-map-paintings-quota-ruler-cm");
+const configMapPaintingsRulerColor = mustEl<HTMLInputElement>("config-map-paintings-ruler-color");
+const configVideoYoutubeUrl = mustEl<HTMLInputElement>("config-video-youtube-url");
+const configVideoDescriptionMd = mustEl<HTMLTextAreaElement>("config-video-description-md");
 const configGalleryMapEditor = mustEl<SVGSVGElement>("config-gallery-map-editor");
 const configGalleryMapSubTabButtons = Array.from(
   document.querySelectorAll<HTMLButtonElement>('[data-config-tab-panel="gallery-map"] [data-gallery-map-subtab]')
@@ -219,6 +239,7 @@ const PAINTING_SNAP_M = PAINTING_SNAP_CM / CM_PER_M;
 const DEFAULT_EXHIBITION_LAT = 41.9028;
 const DEFAULT_EXHIBITION_LNG = 12.4964;
 const DEFAULT_EXHIBITION_ZOOM = 12;
+const GOOGLE_MAPS_EMBED_API_KEY = (import.meta.env.VITE_GOOGLE_MAPS_EMBED_API_KEY || "").trim();
 const GALLERY_GRID_SNAP_M = 0.2;
 const GALLERY_GRID_MAJOR_STEP_M = 1;
 const GALLERY_EDITOR_PADDING_M = 1;
@@ -635,6 +656,11 @@ const { buildRoom, buildCustomWalls } = createWorldBuilder({
   wallColliders,
   cmToM,
   getRoomWallThickness: () => Math.max(0.02, Number(config?.rendering?.wallThickness ?? 0.16)),
+  getRulerConfig: () => ({
+    enabled: Boolean(config?.rendering?.showRuler),
+    quotaM: cmToM(Math.max(0, Number(config?.rendering?.quotaRulerCm ?? 150))),
+    color: normalizeColorInputValue(config?.rendering?.rulerColor, "#d3d3d3"),
+  }),
 });
 
 const movementActions = createMovementActions({
@@ -755,6 +781,7 @@ const {
     app: appContext,
     createNewCatalogPainting,
     openPaintingCard,
+    showEditPanelForEntry,
     closePaintingCard,
     setEditMode,
     getDeletePaintingEntry: () => deletePaintingEntry,
@@ -902,6 +929,7 @@ const inputEventHandlers = createInputEventHandlers({
   app: appContext,
   MIN_PITCH,
   MAX_PITCH,
+  createNewCatalogPainting,
   paintingInteractions,
   applyPaintingImage,
   closePaintingCard,
@@ -934,12 +962,38 @@ async function fetchShowConfig(configPath: string) {
   if (!isValidShowConfig(loaded)) {
     throw new Error(`Formato configurazione non valido: ${configPath}`);
   }
-  return loaded as ShowConfig;
+  const typed = loaded as ShowConfig;
+  typed.projectName = normalizeProjectName(typed.projectName, inferProjectNameFromFilePath(configPath));
+  return typed;
+}
+
+async function fetchStoredRemoteShowConfig() {
+  const apiBase = (import.meta.env.VITE_FILESERVER_API_BASE || "/fileserver/api").trim();
+  const directory = (import.meta.env.VITE_FILESERVER_SHOW_DIRECTORY || "galleria").trim();
+  const storedProjectName = readStoredProjectName("");
+  if (!storedProjectName) {
+    return null;
+  }
+  const path = projectNameToFileserverPath(storedProjectName, directory);
+  const client = createFileserverClient({ apiBase });
+  try {
+    const raw = await client.loadRawFileText(path);
+    const loaded = JSON.parse(raw);
+    if (!isValidShowConfig(loaded)) {
+      return null;
+    }
+    const typed = loaded as ShowConfig;
+    typed.projectName = normalizeProjectName(typed.projectName, storedProjectName);
+    return typed;
+  } catch (error) {
+    console.warn(`Impossibile ripristinare il progetto salvato ${path}`, error);
+    return null;
+  }
 }
 
 async function init() {
   try {
-    config = await fetchShowConfig(requestedConfigPath);
+    config = (await fetchStoredRemoteShowConfig()) ?? (await fetchShowConfig(requestedConfigPath));
   } catch (error) {
     if (requestedConfigPath !== "config/gallery.json") {
       console.warn(`Fallback a config/gallery.json dopo errore su ${requestedConfigPath}`, error);
@@ -948,6 +1002,8 @@ async function init() {
       throw error;
     }
   }
+
+  config.projectName = persistProjectName(config.projectName ?? inferProjectNameFromFilePath(requestedConfigPath));
 
   applyVisitorConfig(config.visitor);
   buildWorld(config);
@@ -5176,6 +5232,36 @@ function resolveExhibitionLocation() {
   return { lat, lng, zoom };
 }
 
+function buildGoogleStreetViewEmbedUrl(lat: number, lng: number) {
+  const url = new URL("https://www.google.com/maps/embed/v1/streetview");
+  url.searchParams.set("key", GOOGLE_MAPS_EMBED_API_KEY);
+  url.searchParams.set("location", `${lat},${lng}`);
+  url.searchParams.set("fov", "80");
+  url.searchParams.set("pitch", "0");
+  return url.toString();
+}
+
+function buildGoogleStreetViewOpenUrl(lat: number, lng: number) {
+  const url = new URL("https://www.google.com/maps");
+  url.searchParams.set("q", `${lat},${lng}`);
+  url.searchParams.set("layer", "c");
+  return url.toString();
+}
+
+function syncWhereStreetViewPreview() {
+  const { lat, lng } = resolveExhibitionLocation();
+  configWhereStreetViewLink.href = buildGoogleStreetViewOpenUrl(lat, lng);
+  if (!GOOGLE_MAPS_EMBED_API_KEY) {
+    configWhereStreetViewFrame.hidden = true;
+    configWhereStreetViewFrame.removeAttribute("src");
+    configWhereStreetViewNote.textContent = "Imposta VITE_GOOGLE_MAPS_EMBED_API_KEY per mostrare l'anteprima Street View della facciata.";
+    return;
+  }
+  configWhereStreetViewFrame.hidden = false;
+  configWhereStreetViewFrame.src = buildGoogleStreetViewEmbedUrl(lat, lng);
+  configWhereStreetViewNote.textContent = "Anteprima Google Street View basata sulle coordinate dell'indirizzo selezionato.";
+}
+
 function buildWhereGeocodeQueries(rawAddress: string) {
   const normalized = rawAddress.replace(/\s+/g, " ").trim();
   if (!normalized) {
@@ -5324,6 +5410,7 @@ function applyExhibitionLocation(latArg: number, lngArg: number, zoomArg?: numbe
   exhibition.location.zoom = nextZoom;
   configWhereLat.value = lat.toFixed(6);
   configWhereLng.value = lng.toFixed(6);
+  syncWhereStreetViewPreview();
 
   if (configLeafletMarker) {
     configLeafletMarker.setLatLng([lat, lng]);
@@ -5437,6 +5524,8 @@ function setActiveConfigTab(tabId: string) {
 
 function syncConfigPanelFromConfig() {
   const exhibition = ensureExhibitionConfig();
+  config.projectName = persistProjectName(config.projectName);
+  configProjectName.value = normalizeProjectName(config.projectName);
   configWhenStartDate.value = exhibition.startDate ?? "";
   configWhenEndDate.value = exhibition.endDate ?? "";
   configWhenTextMd.value = exhibition.whenText ?? "";
@@ -5459,6 +5548,24 @@ function syncConfigPanelFromConfig() {
   configMapWallThicknessCm.value = String(Math.round(clampNumber(firstCustomWallThicknessCm || 16, 5, 200)));
   configMapWallHeightCmWall.value = configMapWallHeightCm.value;
   configMapWallThicknessCmWall.value = configMapWallThicknessCm.value;
+  const defaultFrameBorderCm = Math.max(
+    0,
+    Number(config.rendering?.defaultPaintingFrameBorderCm ?? config.paintings[0]?.frameBorderCm ?? 6)
+  );
+  const defaultFrameColor = normalizeColorInputValue(
+    config.rendering?.defaultPaintingFrameColor ?? config.paintings[0]?.frameColor,
+    "#423934"
+  );
+  const showRuler = config.rendering?.showRuler === true;
+  const quotaRulerCm = Math.max(0, Number(config.rendering?.quotaRulerCm ?? 150));
+  const rulerColor = normalizeColorInputValue(config.rendering?.rulerColor, "#d3d3d3");
+  configMapPaintingsFrameBorderCm.value = String(Math.round(defaultFrameBorderCm));
+  configMapPaintingsFrameColor.value = defaultFrameColor;
+  configMapPaintingsShowRuler.checked = showRuler;
+  configMapPaintingsQuotaRulerCm.value = String(Math.round(quotaRulerCm));
+  configMapPaintingsRulerColor.value = rulerColor;
+  configVideoYoutubeUrl.value = exhibition.videoUrl ?? "";
+  configVideoDescriptionMd.value = exhibition.videoDescriptionMd ?? "";
   configMapOpeningType.value = resolveOpeningType(firstOpening ?? {});
   configMapOpeningWidthCm.value = String(Math.round(getOpeningWidthM(firstOpening ?? {}) * CM_PER_M || 120));
   configMapOpeningBaseCm.value = String(Math.round(getOpeningBaseM(firstOpening ?? {}) * CM_PER_M || 0));
@@ -5484,6 +5591,7 @@ function syncConfigPanelFromConfig() {
   const { lat, lng, zoom } = resolveExhibitionLocation();
   configWhereLat.value = lat.toFixed(6);
   configWhereLng.value = lng.toFixed(6);
+  syncWhereStreetViewPreview();
   if (configLeafletMarker) {
     configLeafletMarker.setLatLng([lat, lng]);
   }
@@ -5549,6 +5657,10 @@ function attachConfigPanel() {
     const exhibition = ensureExhibitionConfig();
     exhibition.whenText = configWhenTextMd.value || undefined;
   });
+  configProjectName.addEventListener("input", () => {
+    config.projectName = persistProjectName(configProjectName.value);
+    configProjectName.value = config.projectName;
+  });
   configWhereAddress.addEventListener("input", () => {
     const exhibition = ensureExhibitionConfig();
     exhibition.location = exhibition.location ?? {};
@@ -5603,6 +5715,46 @@ function attachConfigPanel() {
   configMapWallThicknessCm.addEventListener("change", () => applyGlobalWallParamsFromInputs("room"));
   configMapWallHeightCmWall.addEventListener("change", () => applyGlobalWallParamsFromInputs("wall"));
   configMapWallThicknessCmWall.addEventListener("change", () => applyGlobalWallParamsFromInputs("wall"));
+  const applyGlobalPaintingFrameParamsFromInputs = () => {
+    const rendering = ensureRenderingConfig();
+    const nextBorderCm = Math.max(0, Number(configMapPaintingsFrameBorderCm.value || rendering.defaultPaintingFrameBorderCm || 6));
+    const nextColor = normalizeColorInputValue(configMapPaintingsFrameColor.value, rendering.defaultPaintingFrameColor ?? "#423934");
+    rendering.defaultPaintingFrameBorderCm = nextBorderCm;
+    rendering.defaultPaintingFrameColor = nextColor;
+    configMapPaintingsFrameBorderCm.value = String(Math.round(nextBorderCm));
+    configMapPaintingsFrameColor.value = nextColor;
+    config.paintings.forEach((painting) => {
+      painting.frameBorderCm = nextBorderCm;
+      painting.frameColor = nextColor;
+    });
+    rebuildSceneFromConfig();
+    syncConfigPanelFromConfig();
+  };
+  const applyGlobalPaintingRulerParamsFromInputs = () => {
+    const rendering = ensureRenderingConfig();
+    rendering.showRuler = configMapPaintingsShowRuler.checked;
+    rendering.quotaRulerCm = Math.max(0, Number(configMapPaintingsQuotaRulerCm.value || rendering.quotaRulerCm || 150));
+    rendering.rulerColor = normalizeColorInputValue(configMapPaintingsRulerColor.value, rendering.rulerColor ?? "#d3d3d3");
+    configMapPaintingsQuotaRulerCm.value = String(Math.round(rendering.quotaRulerCm));
+    configMapPaintingsRulerColor.value = rendering.rulerColor;
+    rebuildSceneFromConfig();
+    syncConfigPanelFromConfig();
+  };
+  configMapPaintingsFrameBorderCm.addEventListener("change", applyGlobalPaintingFrameParamsFromInputs);
+  configMapPaintingsFrameColor.addEventListener("input", applyGlobalPaintingFrameParamsFromInputs);
+  configMapPaintingsFrameColor.addEventListener("change", applyGlobalPaintingFrameParamsFromInputs);
+  configMapPaintingsShowRuler.addEventListener("change", applyGlobalPaintingRulerParamsFromInputs);
+  configMapPaintingsQuotaRulerCm.addEventListener("change", applyGlobalPaintingRulerParamsFromInputs);
+  configMapPaintingsRulerColor.addEventListener("input", applyGlobalPaintingRulerParamsFromInputs);
+  configMapPaintingsRulerColor.addEventListener("change", applyGlobalPaintingRulerParamsFromInputs);
+  configVideoYoutubeUrl.addEventListener("input", () => {
+    const exhibition = ensureExhibitionConfig();
+    exhibition.videoUrl = configVideoYoutubeUrl.value.trim() || undefined;
+  });
+  configVideoDescriptionMd.addEventListener("input", () => {
+    const exhibition = ensureExhibitionConfig();
+    exhibition.videoDescriptionMd = configVideoDescriptionMd.value || undefined;
+  });
   configMapOpeningType.addEventListener("change", applySelectedOpeningParamsFromInputs);
   configMapOpeningWidthCm.addEventListener("change", applySelectedOpeningParamsFromInputs);
   configMapOpeningBaseCm.addEventListener("change", applySelectedOpeningParamsFromInputs);
@@ -5718,6 +5870,7 @@ function attachInput() {
   attachGalleryInput(
     {
       canvas,
+      galleryPanel,
       minimapCanvas,
       configPanel,
       configSaveLocalBtn,

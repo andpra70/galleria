@@ -1,5 +1,6 @@
 import type { AppContext } from "./appServices";
 import type { ArtCardDomElements } from "./domTypes";
+import { optimizeImportedPaintingImage } from "./importedPaintingImage";
 import type { GalleryPainting, PaintingRegistryEntry } from "./types";
 
 type PaintingEditorHandlersDeps = {
@@ -123,7 +124,7 @@ export function createPaintingEditorHandlers(deps: PaintingEditorHandlersDeps) {
     artCardImage.classList.remove("image-drop-target");
   }
 
-  function onCardImageDrop(event: DragEvent) {
+  async function onCardImageDrop(event: DragEvent) {
     if (!uiState.editMode || artCard.hidden) {
       return;
     }
@@ -133,21 +134,22 @@ export function createPaintingEditorHandlers(deps: PaintingEditorHandlersDeps) {
     if (!file) {
       return;
     }
+    const optimizedImage = await optimizeImportedPaintingImage(file);
     const entry = cardState.paintingId ? paintingRegistry.get(cardState.paintingId) : null;
-    const objectUrl = URL.createObjectURL(file);
     if (entry) {
-      applyPaintingImage(entry, objectUrl, true);
+      entry.painting.aspectRatio = optimizedImage.width / optimizedImage.height;
+      applyPaintingImage(entry, optimizedImage.dataUrl, false);
     } else {
       const painting = cardState.paintingId ? paintings().find((p: GalleryPainting) => p.id === cardState.paintingId) : null;
       if (!painting) {
-        URL.revokeObjectURL(objectUrl);
         return;
       }
-      painting.image = objectUrl;
+      painting.image = optimizedImage.dataUrl;
+      painting.aspectRatio = optimizedImage.width / optimizedImage.height;
     }
 
     editorState.suspend = true;
-    artEditImageUrl.value = objectUrl;
+    artEditImageUrl.value = optimizedImage.dataUrl;
     editorState.suspend = false;
 
     if (entry) {

@@ -35,6 +35,47 @@ body,
   min-width: 0;
 }
 
+#toast-host {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  z-index: 20;
+  display: grid;
+  gap: 10px;
+  width: min(360px, calc(100vw - 36px));
+  pointer-events: none;
+}
+
+.toast {
+  padding: 11px 13px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  background: rgba(15, 23, 42, 0.9);
+  color: #f8fafc;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.24);
+  white-space: pre-wrap;
+  line-height: 1.35;
+  font-size: 0.86rem;
+  opacity: 0;
+  transform: translateY(8px);
+  animation: toast-in 160ms ease-out forwards;
+}
+
+.toast.error {
+  background: rgba(127, 29, 29, 0.94);
+}
+
+.toast.success {
+  background: rgba(15, 118, 110, 0.94);
+}
+
+@keyframes toast-in {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 #config-panel-container {
   position: relative;
   flex: 0 0 clamp(300px, 32vw, 430px);
@@ -111,6 +152,28 @@ body,
   outline-offset: 2px;
 }
 
+#config-where-streetview-card {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.38);
+  background: rgba(248, 250, 252, 0.92);
+}
+
+#config-where-streetview-card iframe {
+  width: 100%;
+  min-height: 260px;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(226, 232, 240, 0.55);
+}
+
+#config-where-streetview-card iframe[hidden] {
+  display: none;
+}
+
 #config-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -180,6 +243,22 @@ body,
 
 .config-actions-menu-list > button:hover {
   background: rgba(14, 116, 144, 0.2);
+}
+
+.config-save-progress {
+  min-height: 1.2em;
+  padding: 4px 6px 2px;
+  font-size: 0.78rem;
+  color: #475569;
+  white-space: pre-wrap;
+}
+
+.config-save-progress.busy {
+  color: #0f766e;
+}
+
+.config-save-progress.error {
+  color: #b42318;
 }
 
 #minimap {

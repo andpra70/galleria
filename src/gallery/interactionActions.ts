@@ -188,6 +188,7 @@ export function createInteractionActions(deps: InteractionActionsDeps) {
 
   function createPaintingFromWallHit(room: GalleryRoom, wall: WallSide, hitPoint: THREE_NS.Vector3): GalleryPainting {
     const config = getConfig();
+    const rendering = config.rendering ?? {};
     const id = nextPaintingId(config.paintings, paintingRegistry);
     const span = getWallSpan(room, wall);
     const defaultCenter = snapToStep(THREE.MathUtils.clamp(hitPoint.y, 1.2, Math.max(1.3, room.height - 0.6)), PAINTING_SNAP_M);
@@ -202,6 +203,8 @@ export function createInteractionActions(deps: InteractionActionsDeps) {
       centerY: defaultCenter,
       widthCm: 140,
       heightCm: 100,
+      frameBorderCm: Math.max(0, Number(rendering.defaultPaintingFrameBorderCm ?? 6)),
+      frameColor: typeof rendering.defaultPaintingFrameColor === "string" ? rendering.defaultPaintingFrameColor : "#423934",
       placed: true,
       image: createPlaceholderPaintingImage("Nuova Opera"),
     });
@@ -335,6 +338,7 @@ export function createInteractionActions(deps: InteractionActionsDeps) {
       painting = createPaintingFromWallHit(wallHit.room, wallHit.wall, wallHit.point);
     } else {
       const config = getConfig();
+      const rendering = config.rendering ?? {};
       const id = nextPaintingId(config.paintings, paintingRegistry);
       const wallHeight = Math.max(0.2, Number(wallHit.customWall.height ?? 3));
       const centerY = snapToStep(THREE.MathUtils.clamp(wallHit.point.y, 1.2, Math.max(1.3, wallHeight - 0.6)), PAINTING_SNAP_M);
@@ -351,6 +355,8 @@ export function createInteractionActions(deps: InteractionActionsDeps) {
         customWallSide: wallHit.side,
         widthCm: 140,
         heightCm: 100,
+        frameBorderCm: Math.max(0, Number(rendering.defaultPaintingFrameBorderCm ?? 6)),
+        frameColor: typeof rendering.defaultPaintingFrameColor === "string" ? rendering.defaultPaintingFrameColor : "#423934",
         placed: true,
         image: createPlaceholderPaintingImage("Nuova Opera"),
       });

@@ -1,6 +1,6 @@
 import type { AppContext } from "./appServices";
 import type { PaintingRegistryEntry, PaintingSpot, GalleryPainting } from "./types";
-import { resolveAppUrl } from "./url";
+import { isBlobUrl, resolveAppUrl } from "./url";
 type MeshLike = any;
 
 type PaintingDimensions = { width: number; height: number };
@@ -113,6 +113,11 @@ export function createPaintingImageOps(deps: PaintingImageOpsDeps) {
         if (noImagePlaceholder && imageUrl !== noImagePlaceholder) {
           applyPaintingImage(entry, noImagePlaceholder, false);
           entry.hasSourceImage = false;
+          return;
+        }
+        if (isBlobUrl(imageUrl)) {
+          entry.painting.image = "";
+          entry.hasSourceImage = false;
         }
       }
     );
@@ -132,6 +137,9 @@ export function createPaintingImageOps(deps: PaintingImageOpsDeps) {
         URL.revokeObjectURL(entry.objectUrl);
       }
       entry.objectUrl = imageUrl;
+    } else if (entry.objectUrl) {
+      URL.revokeObjectURL(entry.objectUrl);
+      entry.objectUrl = null;
     }
     entry.painting.image = imageUrl;
     entry.paintingSpot.image = resolvedImageUrl;

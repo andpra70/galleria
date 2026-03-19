@@ -1,4 +1,6 @@
 import type { AppContext } from "./appServices";
+import { getImageFiles, hasImagePayload } from "./files";
+import { applyImportedFileMetadataToPainting } from "./importedPaintingMetadata";
 import { createPseudoPaintingCardViewModel, toFilmstripItemViewModel } from "./paintingModels";
 import type { GalleryPainting, PaintingRegistryEntry, PaintingSpot } from "./types";
 
@@ -12,19 +14,41 @@ type FilmstripControllerDeps = {
   app: AppContext;
   createNewCatalogPainting: () => GalleryPainting;
   openPaintingCard: (paintingSpot: PaintingSpot) => void;
+  showEditPanelForEntry: (entry: PaintingRegistryEntry) => void;
   closePaintingCard: () => void;
   setEditMode: (enabled: boolean) => void;
   getDeletePaintingEntry: () => ((entry: PaintingRegistryEntry, options?: DeletePaintingEntryOptions) => void) | undefined;
 };
 
 export function createFilmstripController(deps: FilmstripControllerDeps) {
-  const { app, createNewCatalogPainting, openPaintingCard, closePaintingCard, setEditMode, getDeletePaintingEntry } = deps;
+  const { app, createNewCatalogPainting, openPaintingCard, showEditPanelForEntry, closePaintingCard, setEditMode, getDeletePaintingEntry } = deps;
   const { status } = app;
   const { uiState, movement, visitor, cardState } = status;
   const { THREE } = app.runtime;
   const { filmstripItems } = app.dom;
   const { paintingRegistry } = app.collections;
-  const { createPlaceholderPaintingImage, cmToM, getFirstImageFile } = app.helpers;
+  const { createPlaceholderPaintingImage, cmToM } = app.helpers;
+
+  async function addCatalogPaintingsFromFiles(files: File[]) {
+    if (!files.length) {
+      return [];
+    }
+    const config = app.status.refs.getConfig();
+    if (!uiState.editMode) {
+      setEditMode(true);
+    }
+    const created: GalleryPainting[] = [];
+    for (const file of files) {
+      const painting = createNewCatalogPainting();
+      await applyImportedFileMetadataToPainting(painting, file);
+      config.paintings.push(painting);
+      created.push(painting);
+    }
+    uiState.selectedPaintingId = created[created.length - 1]?.id ?? null;
+    renderFilmstrip();
+    closePaintingCard();
+    return created;
+  }
 
   function renderFilmstrip() {
     if (!filmstripItems) {
@@ -155,6 +179,12 @@ export function createFilmstripController(deps: FilmstripControllerDeps) {
     }
     uiState.selectedPaintingId = painting.id;
     renderFilmstrip();
+    const entry = paintingRegistry.get(painting.id);
+    if (entry) {
+      openPaintingCard(entry.paintingSpot);
+      showEditPanelForEntry(entry);
+      return;
+    }
     openCatalogPainting(painting);
   }
 
@@ -177,36 +207,25 @@ export function createFilmstripController(deps: FilmstripControllerDeps) {
   }
 
   function onFilmstripDragOver(event: DragEvent) {
-    const file = getFirstImageFile(event.dataTransfer);
-    if (!file) {
+    if (!hasImagePayload(event.dataTransfer)) {
       return;
     }
     event.preventDefault();
   }
 
-  function onFilmstripDrop(event: DragEvent) {
-    const file = getFirstImageFile(event.dataTransfer);
-    if (!file) {
+  async function onFilmstripDrop(event: DragEvent) {
+    const files = getImageFiles(event.dataTransfer);
+    if (!files.length) {
       return;
     }
     event.preventDefault();
-
-    const config = app.status.refs.getConfig();
-    if (!uiState.editMode) {
-      setEditMode(true);
-    }
-    const painting = createNewCatalogPainting();
-    painting.image = URL.createObjectURL(file);
-    painting.title = file.name.replace(/\.[^.]+$/, "") || painting.title;
-    config.paintings.push(painting);
-    uiState.selectedPaintingId = painting.id;
-    renderFilmstrip();
-    closePaintingCard();
+    await addCatalogPaintingsFromFiles(files);
   }
 
   return {
     renderFilmstrip,
     openCatalogPainting,
+    addCatalogPaintingsFromFiles,
     onFilmstripAddClick,
     onFilmstripClick,
     onFilmstripDoubleClick,

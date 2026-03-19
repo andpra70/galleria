@@ -28,12 +28,13 @@ type WorldBuilderDeps = {
   wallColliders: THREE_NS.Box3[];
   cmToM: (cm: number) => number;
   getRoomWallThickness: () => number;
+  getRulerConfig: () => { enabled: boolean; quotaM: number; color: THREE_NS.ColorRepresentation };
 };
 
 const WALL_MATCH_EPS = 0.001;
 const WALL_SEGMENT_EPS = 0.01;
 
-export function createWorldBuilder({ THREE, world, floorMeshes, wallMeshes, wallColliders, cmToM, getRoomWallThickness }: WorldBuilderDeps) {
+export function createWorldBuilder({ THREE, world, floorMeshes, wallMeshes, wallColliders, cmToM, getRoomWallThickness, getRulerConfig }: WorldBuilderDeps) {
   function cacheWallCollider(mesh: GalleryWallMesh): void {
     mesh.updateWorldMatrix(true, false);
     const box = new THREE.Box3().setFromObject(mesh);
@@ -255,6 +256,100 @@ export function createWorldBuilder({ THREE, world, floorMeshes, wallMeshes, wall
     return wallMesh as GalleryWallMesh;
   }
 
+  function addWallRulerLine(start: THREE_NS.Vector3, end: THREE_NS.Vector3) {
+    const rulerCfg = getRulerConfig();
+    if (!rulerCfg.enabled) {
+      return;
+    }
+    const geometry = new THREE.BufferGeometry().setFromPoints([start, end]);
+    const material = new THREE.LineDashedMaterial({
+      color: rulerCfg.color,
+      dashSize: 0.16,
+      gapSize: 0.1,
+      transparent: true,
+      opacity: 0.95,
+      depthWrite: false,
+    });
+    const line = new THREE.Line(geometry, material);
+    line.computeLineDistances();
+    world.add(line);
+  }
+
+  function addRoomWallRuler(room: GalleryRoom, wall: WallSide, seg: IntervalSegment, thickness: number) {
+    const quotaM = getRulerConfig().quotaM;
+    const surfaceOffset = Math.max(0.006, thickness * 0.5 + 0.003);
+    if (wall === "north") {
+      addWallRulerLine(
+        new THREE.Vector3(room.x + seg.from, quotaM, room.z - surfaceOffset),
+        new THREE.Vector3(room.x + seg.to, quotaM, room.z - surfaceOffset)
+      );
+      addWallRulerLine(
+        new THREE.Vector3(room.x + seg.from, quotaM, room.z + thickness + 0.003),
+        new THREE.Vector3(room.x + seg.to, quotaM, room.z + thickness + 0.003)
+      );
+      return;
+    }
+    if (wall === "south") {
+      addWallRulerLine(
+        new THREE.Vector3(room.x + seg.from, quotaM, room.z + room.depth - thickness - 0.003),
+        new THREE.Vector3(room.x + seg.to, quotaM, room.z + room.depth - thickness - 0.003)
+      );
+      addWallRulerLine(
+        new THREE.Vector3(room.x + seg.from, quotaM, room.z + room.depth + surfaceOffset),
+        new THREE.Vector3(room.x + seg.to, quotaM, room.z + room.depth + surfaceOffset)
+      );
+      return;
+    }
+    if (wall === "west") {
+      addWallRulerLine(
+        new THREE.Vector3(room.x - surfaceOffset, quotaM, room.z + seg.from),
+        new THREE.Vector3(room.x - surfaceOffset, quotaM, room.z + seg.to)
+      );
+      addWallRulerLine(
+        new THREE.Vector3(room.x + thickness + 0.003, quotaM, room.z + seg.from),
+        new THREE.Vector3(room.x + thickness + 0.003, quotaM, room.z + seg.to)
+      );
+      return;
+    }
+    addWallRulerLine(
+      new THREE.Vector3(room.x + room.width - thickness - 0.003, quotaM, room.z + seg.from),
+      new THREE.Vector3(room.x + room.width - thickness - 0.003, quotaM, room.z + seg.to)
+    );
+    addWallRulerLine(
+      new THREE.Vector3(room.x + room.width + surfaceOffset, quotaM, room.z + seg.from),
+      new THREE.Vector3(room.x + room.width + surfaceOffset, quotaM, room.z + seg.to)
+    );
+  }
+
+  function addCustomWallRuler(segment: CustomWallConfig, part: IntervalSegment, length: number, thickness: number) {
+    const rulerCfg = getRulerConfig();
+    if (!rulerCfg.enabled) {
+      return;
+    }
+    const x1 = Number(segment.x1);
+    const z1 = Number(segment.z1);
+    const x2 = Number(segment.x2);
+    const z2 = Number(segment.z2);
+    const dx = x2 - x1;
+    const dz = z2 - z1;
+    if (length < 0.05) {
+      return;
+    }
+    const dirX = dx / length;
+    const dirZ = dz / length;
+    const normalX = -dirZ;
+    const normalZ = dirX;
+    const surfaceOffset = Math.max(0.006, thickness * 0.5 + 0.003);
+    addWallRulerLine(
+      new THREE.Vector3(x1 + dirX * part.from + normalX * surfaceOffset, rulerCfg.quotaM, z1 + dirZ * part.from + normalZ * surfaceOffset),
+      new THREE.Vector3(x1 + dirX * part.to + normalX * surfaceOffset, rulerCfg.quotaM, z1 + dirZ * part.to + normalZ * surfaceOffset)
+    );
+    addWallRulerLine(
+      new THREE.Vector3(x1 + dirX * part.from - normalX * surfaceOffset, rulerCfg.quotaM, z1 + dirZ * part.from - normalZ * surfaceOffset),
+      new THREE.Vector3(x1 + dirX * part.to - normalX * surfaceOffset, rulerCfg.quotaM, z1 + dirZ * part.to - normalZ * surfaceOffset)
+    );
+  }
+
   function buildRoomFloorAndCeiling(
     room: GalleryRoom,
     ceilingColor: THREE_NS.ColorRepresentation,
@@ -303,6 +398,7 @@ export function createWorldBuilder({ THREE, world, floorMeshes, wallMeshes, wall
         mesh.castShadow = true;
         mesh.receiveShadow = true;
         world.add(mesh);
+        addRoomWallRuler(room, wall, seg, wallThickness);
         cacheWallCollider(mesh);
         wallMeshes.push(mesh);
       });
@@ -363,6 +459,7 @@ export function createWorldBuilder({ THREE, world, floorMeshes, wallMeshes, wall
           wallType: "customSegment",
           customWallId: segment.id,
         };
+        addCustomWallRuler(segment, part, length, thickness);
         return mesh as GalleryWallMesh;
       });
   }
