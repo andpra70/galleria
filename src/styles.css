@@ -1493,25 +1493,14 @@ label[for="art-edit-image-url"] {
 
   #art-card:not(.is-editing) #art-card-image-viewport {
     order: 1;
-    flex: 0 0 80%;
-    height: 80%;
-    min-height: 180px;
+    display: grid;
+    flex: 0 0 auto;
+    min-height: min(48vh, 360px);
+    max-height: 56vh;
   }
 
   #art-card:not(.is-editing) #art-card-preview-text {
     order: 2;
-    flex: 1 1 auto;
-    min-height: 0;
-    max-height: none;
-  }
-
-  /* Mobile preview: only captions/synoptic, no image */
-  #art-card:not(.is-editing) #art-card-image-viewport {
-    display: none;
-  }
-
-  #art-card:not(.is-editing) #art-card-preview-text {
-    order: 1;
     flex: 1 1 auto;
     min-height: 0;
     max-height: none;
@@ -1523,10 +1512,16 @@ label[for="art-edit-image-url"] {
       "close"
       "image"
       "editor";
+    grid-template-rows: auto minmax(180px, 34vh) minmax(0, 1fr);
+  }
+
+  #art-card.is-editing #art-card-image-viewport {
+    min-height: min(34vh, 280px);
+    max-height: 34vh;
   }
 
   #art-card.is-editing #art-card-image {
-    max-height: 180px;
+    max-height: calc(34vh - 12px);
   }
 
   .art-edit-inline-row {
