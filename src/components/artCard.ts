@@ -124,9 +124,15 @@ export function renderArtCard() {
                 </div>
               </div>
               <div class="art-edit-audio-actions">
-                <button id="art-edit-audio-toggle" type="button">Play audio</button>
+                <button id="art-edit-audio-toggle" type="button">Play</button>
+                <button id="art-edit-audio-pause" type="button">Pause</button>
+                <button id="art-edit-audio-stop" type="button">Stop</button>
                 <button id="art-edit-audio-upload" type="button">Carica audio</button>
                 <button id="art-edit-audio-clear" type="button">Rimuovi audio</button>
+              </div>
+              <div class="art-edit-audio-actions">
+                <button id="art-edit-audio-record" type="button">Registra mic</button>
+                <button id="art-edit-audio-record-stop" type="button">Ferma rec</button>
               </div>
               <p class="art-edit-audio-help">Trascina qui un file MP3/MP4/M4A. Il file viene caricato su audiogallery e qui scegli start/stop.</p>
               <input id="art-edit-audio-file" type="file" accept=".mp3,audio/mpeg,.mp4,audio/mp4,video/mp4,audio/x-m4a,.m4a" hidden />
