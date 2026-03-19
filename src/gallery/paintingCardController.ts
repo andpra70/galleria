@@ -34,6 +34,12 @@ export function createPaintingCardController(deps: PaintingCardControllerDeps) {
   function closePaintingCard() {
     cardState.paintingId = null;
     resetEditPanelDom(artEditDomElements);
+    artCardDomElements.artCardAudio.pause();
+    artCardDomElements.artCardAudio.currentTime = 0;
+    artCardDomElements.artCardAudio.removeAttribute("src");
+    artCardDomElements.artCardAudioToggle.hidden = true;
+    artCardDomElements.artCardAudioToggle.dataset.playing = "false";
+    artCardDomElements.artCardAudioToggle.textContent = "🔊";
     artCard.classList.remove("is-editing");
     artCard.hidden = true;
   }
@@ -76,6 +82,9 @@ export function createPaintingCardController(deps: PaintingCardControllerDeps) {
     artEditDomElements.artEditFrameColor.value = painting.frameColor ?? "#423934";
     artEditDomElements.artEditCenterYCm.value = String(Math.round(mToCm(painting.centerY ?? 1.65)));
     artEditDomElements.artEditImageUrl.value = painting.image ?? "";
+    artEditDomElements.artEditAudioStatus.textContent = (painting.audioMp4 ?? "").trim() ? "Audio MP4 incorporato" : "Nessun audio";
+    artEditDomElements.artEditAudioClear.disabled = !(painting.audioMp4 ?? "").trim();
+    artEditDomElements.artEditAudioFile.value = "";
     fillSynopsisFieldsDom(artEditDomElements.artEditSynopsisList, painting.synopsis ?? {});
     artEditDomElements.artEditDelete.disabled = !placedEntry;
     artEditDomElements.artEditMoveLeft.disabled = !placedEntry;

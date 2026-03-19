@@ -109,6 +109,8 @@ const configImportCatalogJsonBtn = mustEl<HTMLButtonElement>("config-import-cata
 const artCard = mustEl<HTMLElement>("art-card");
 const artCardImageViewport = mustEl<HTMLElement>("art-card-image-viewport");
 const artCardTitle = mustEl<HTMLElement>("art-card-title");
+const artCardAudioToggle = mustEl<HTMLButtonElement>("art-card-audio-toggle");
+const artCardAudio = mustEl<HTMLAudioElement>("art-card-audio");
 const artCardDescription = mustEl<HTMLElement>("art-card-description");
 const artCardImage = mustEl<HTMLImageElement>("art-card-image");
 const artCardSynoptic = mustEl<HTMLElement>("art-card-synoptic");
@@ -133,6 +135,10 @@ const artEditFrameBorderCm = mustEl<HTMLInputElement>("art-edit-frame-border-cm"
 const artEditFrameColor = mustEl<HTMLInputElement>("art-edit-frame-color");
 const artEditCenterYCm = mustEl<HTMLInputElement>("art-edit-center-y-cm");
 const artEditImageUrl = mustEl<HTMLInputElement>("art-edit-image-url");
+const artEditAudioStatus = mustEl<HTMLElement>("art-edit-audio-status");
+const artEditAudioUpload = mustEl<HTMLButtonElement>("art-edit-audio-upload");
+const artEditAudioClear = mustEl<HTMLButtonElement>("art-edit-audio-clear");
+const artEditAudioFile = mustEl<HTMLInputElement>("art-edit-audio-file");
 const artEditSynopsisList = mustEl<HTMLElement>("art-edit-synopsis-list");
 const artEditSynopsisAdd = mustEl<HTMLButtonElement>("art-edit-synopsis-add");
 const artEditMoveLeft = mustEl<HTMLButtonElement>("art-edit-move-left");
@@ -559,7 +565,7 @@ let artCardPinchStartMidY = 0;
 const world = new THREE.Group();
 scene.add(world);
 
-const artCardDomElements = { artCardTitle, artCardDescription, artCardImage, artCardSynoptic };
+const artCardDomElements = { artCardTitle, artCardDescription, artCardImage, artCardSynoptic, artCardAudioToggle, artCardAudio };
 const artEditDomElements = {
   artEditPanel,
   artEditId,
@@ -577,6 +583,10 @@ const artEditDomElements = {
   artEditFrameColor,
   artEditCenterYCm,
   artEditImageUrl,
+  artEditAudioStatus,
+  artEditAudioUpload,
+  artEditAudioClear,
+  artEditAudioFile,
   artEditSynopsisList,
   artEditDelete,
   artEditMoveLeft,
@@ -896,6 +906,10 @@ const paintingEditorHandlers = createPaintingEditorHandlers({
   dom: {
     artCardImage,
     artEditImageUrl,
+    artEditAudioStatus,
+    artEditAudioUpload,
+    artEditAudioClear,
+    artEditAudioFile,
     artEditSynopsisList,
     artCardDomElements,
   },
@@ -6250,4 +6264,43 @@ function attachInput() {
       onCardImageDrop: paintingEditorHandlers.onCardImageDrop,
     }
   );
+  artEditAudioUpload.addEventListener("click", paintingEditorHandlers.onAudioUploadClick);
+  artEditAudioFile.addEventListener("change", () => {
+    void paintingEditorHandlers.onAudioFileChange();
+  });
+  artEditAudioClear.addEventListener("click", paintingEditorHandlers.onAudioClear);
+  artCardAudioToggle.addEventListener("click", async () => {
+    if (artCardAudioToggle.hidden || !(artCardAudio.src || "").trim()) {
+      return;
+    }
+    if (artCardAudio.paused) {
+      try {
+        await artCardAudio.play();
+        artCardAudioToggle.dataset.playing = "true";
+        artCardAudioToggle.textContent = "■";
+        artCardAudioToggle.title = "Ferma audio opera";
+      } catch (error) {
+        console.warn("Impossibile riprodurre l'audio dell'opera", error);
+      }
+      return;
+    }
+    artCardAudio.pause();
+    artCardAudio.currentTime = 0;
+    artCardAudioToggle.dataset.playing = "false";
+    artCardAudioToggle.textContent = "🔊";
+    artCardAudioToggle.title = "Riproduci audio opera";
+  });
+  artCardAudio.addEventListener("ended", () => {
+    artCardAudioToggle.dataset.playing = "false";
+    artCardAudioToggle.textContent = "🔊";
+    artCardAudioToggle.title = "Riproduci audio opera";
+  });
+  artCardAudio.addEventListener("pause", () => {
+    if (artCardAudio.ended) {
+      return;
+    }
+    artCardAudioToggle.dataset.playing = "false";
+    artCardAudioToggle.textContent = "🔊";
+    artCardAudioToggle.title = "Riproduci audio opera";
+  });
 }

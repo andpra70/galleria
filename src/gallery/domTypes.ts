@@ -3,6 +3,8 @@ export type ArtCardDomElements = {
   artCardDescription: HTMLElement;
   artCardImage: HTMLImageElement;
   artCardSynoptic: HTMLElement;
+  artCardAudioToggle: HTMLButtonElement;
+  artCardAudio: HTMLAudioElement;
 };
 
 export type ArtEditDomElements = {
@@ -22,6 +24,10 @@ export type ArtEditDomElements = {
   artEditFrameColor: HTMLInputElement;
   artEditCenterYCm: HTMLInputElement;
   artEditImageUrl: HTMLInputElement;
+  artEditAudioStatus: HTMLElement;
+  artEditAudioUpload: HTMLButtonElement;
+  artEditAudioClear: HTMLButtonElement;
+  artEditAudioFile: HTMLInputElement;
   artEditSynopsisList: HTMLElement;
   artEditDelete: HTMLButtonElement;
   artEditMoveLeft: HTMLButtonElement;

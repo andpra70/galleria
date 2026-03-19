@@ -1040,6 +1040,34 @@ body,
   overflow: visible;
 }
 
+#art-card-heading-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+#art-card-audio-toggle {
+  flex: 0 0 auto;
+  border: 0;
+  border-radius: 999px;
+  width: 38px;
+  height: 38px;
+  background: #0f766e;
+  color: #ffffff;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+#art-card-audio-toggle[hidden] {
+  display: none;
+}
+
+#art-card-audio {
+  display: none;
+}
+
 #art-card-description {
   margin: 0;
   font-size: 0.74rem;
@@ -1202,6 +1230,41 @@ label[for="art-edit-image-url"] {
 .art-edit-inline-field {
   display: grid;
   gap: 4px;
+}
+
+.art-edit-audio-row {
+  display: grid;
+  gap: 6px;
+}
+
+.art-edit-audio-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+#art-edit-audio-upload,
+#art-edit-audio-clear {
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+#art-edit-audio-upload {
+  background: #0f766e;
+  color: #ffffff;
+}
+
+#art-edit-audio-clear {
+  background: rgba(148, 163, 184, 0.22);
+  color: #0f172a;
+}
+
+#art-edit-audio-clear:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 #art-edit-panel[hidden] {

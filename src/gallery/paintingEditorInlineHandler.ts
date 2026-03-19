@@ -221,6 +221,7 @@ export function createPaintingEditorInlineHandler(deps: PaintingEditorInlineDeps
       entry.paintingSpot.title = painting.title;
       entry.paintingSpot.description = painting.description;
       entry.paintingSpot.synopsis = nextSynopsis;
+      entry.paintingSpot.audioMp4 = (painting.audioMp4 || "").trim() || undefined;
     }
 
     if (nextId !== prevId) {

@@ -161,6 +161,7 @@ export function createPaintingBuilder(deps: PaintingBuilderDeps) {
       description: painting.description ?? "",
       synopsis: painting.synopsis ?? {},
       image: resolveAppUrl(sourceImage || activeImage),
+      audioMp4: (painting.audioMp4 || "").trim() || undefined,
       center: new THREE.Vector3(0, painting.centerY ?? 1.65, 0),
       normal: new THREE.Vector3(0, 0, 1),
       width: initialDimensions.width,

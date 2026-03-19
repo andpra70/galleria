@@ -2,7 +2,7 @@ import type { ArtCardDomElements, ArtEditDomElements } from "./domTypes";
 import type { PaintingSpot } from "./types";
 
 export function renderPaintingCardContentDom(elements: ArtCardDomElements, paintingSpot: PaintingSpot) {
-  const { artCardTitle, artCardDescription, artCardImage, artCardSynoptic } = elements;
+  const { artCardTitle, artCardDescription, artCardImage, artCardSynoptic, artCardAudioToggle, artCardAudio } = elements;
   const card = artCardImage.closest<HTMLElement>("#art-card");
   if (card) {
     const isVertical = Number(paintingSpot.height) > Number(paintingSpot.width);
@@ -14,6 +14,22 @@ export function renderPaintingCardContentDom(elements: ArtCardDomElements, paint
   artCardDescription.textContent = paintingSpot.description ?? "Descrizione non disponibile.";
   artCardImage.src = paintingSpot.image;
   artCardImage.alt = `Anteprima ${paintingSpot.title ?? "opera"}`;
+  artCardAudio.pause();
+  artCardAudio.currentTime = 0;
+  if ((paintingSpot.audioMp4 || "").trim()) {
+    artCardAudio.src = paintingSpot.audioMp4 ?? "";
+    artCardAudioToggle.hidden = false;
+    artCardAudioToggle.dataset.playing = "false";
+    artCardAudioToggle.textContent = "🔊";
+    artCardAudioToggle.title = "Riproduci audio opera";
+  } else {
+    artCardAudio.removeAttribute("src");
+    artCardAudio.load();
+    artCardAudioToggle.hidden = true;
+    artCardAudioToggle.dataset.playing = "false";
+    artCardAudioToggle.textContent = "🔊";
+    artCardAudioToggle.title = "";
+  }
   artCardSynoptic.innerHTML = "";
 
   const synoptic = paintingSpot.synopsis ?? {};
@@ -47,6 +63,8 @@ export function resetEditPanelDom(elements: ArtEditDomElements) {
     artEditFrameColor,
     artEditCenterYCm,
     artEditImageUrl,
+    artEditAudioStatus,
+    artEditAudioFile,
     artEditSynopsisList,
     artEditDelete,
     artEditMoveLeft,
@@ -71,6 +89,8 @@ export function resetEditPanelDom(elements: ArtEditDomElements) {
   artEditFrameColor.value = "#423934";
   artEditCenterYCm.value = "";
   artEditImageUrl.value = "";
+  artEditAudioStatus.textContent = "Nessun audio";
+  artEditAudioFile.value = "";
   artEditSynopsisList.innerHTML = "";
   artEditDelete.disabled = false;
   artEditMoveLeft.disabled = false;

@@ -26,6 +26,7 @@ export interface GalleryPainting {
   description?: string;
   synopsis?: Record<string, string>;
   image?: string;
+  audioMp4?: string;
   roomId?: string;
   wall?: WallSide | string;
   offset?: number;
@@ -226,6 +227,7 @@ export interface PaintingCardViewModel {
   description: string;
   synopsis: Record<string, string>;
   image: string;
+  audioMp4?: string;
   center: THREE_NS.Vector3;
   normal: THREE_NS.Vector3;
   width: number;
@@ -238,6 +240,7 @@ export interface PaintingSpot {
   description: string;
   synopsis: Record<string, string>;
   image: string;
+  audioMp4?: string;
   center: THREE_NS.Vector3;
   normal: THREE_NS.Vector3;
   width: number;
