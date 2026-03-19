@@ -1,6 +1,6 @@
 import * as THREE_NS from "three";
 import type { AppContext } from "./appServices";
-import type { CustomWallConfig, GalleryPainting, GalleryRoom, GalleryRoomOpening, GallerySpotLightConfig, ShowConfig, VisitorConfig } from "./types";
+import type { AudioGalleryAsset, CustomWallConfig, GalleryPainting, GalleryRoom, GalleryRoomOpening, GallerySpotLightConfig, ShowConfig, VisitorConfig } from "./types";
 import { createPaintingConfigModel } from "./paintingModels";
 import { inferProjectNameFromFilePath, normalizeProjectName } from "./projectName";
 import { isBlobUrl } from "./url";
@@ -169,6 +169,8 @@ export function createSceneConfigController(deps: SceneConfigControllerDeps) {
   }
 
   function normalizePaintings(paintings: GalleryPainting[]) {
+    const audioGallery = Array.isArray(status.refs.getConfig().audioGallery) ? status.refs.getConfig().audioGallery as AudioGalleryAsset[] : [];
+    const audioById = new Map(audioGallery.map((asset) => [asset.id, asset]));
     paintings.forEach((painting) => {
       if (painting.placed == null) {
         painting.placed = true;
@@ -218,7 +220,26 @@ export function createSceneConfigController(deps: SceneConfigControllerDeps) {
         const side = Number(painting.customWallSide);
         painting.customWallSide = side >= 0 ? 1 : -1;
       }
+      if ((painting.audioAssetId || "").trim()) {
+        const asset = audioById.get((painting.audioAssetId || "").trim());
+        painting.audioMp4 = asset?.dataUrl ?? "";
+      } else if (typeof painting.audioMp4 !== "string") {
+        painting.audioMp4 = "";
+      }
     });
+  }
+
+  function normalizeAudioGallery(cfg: ShowConfig) {
+    const audioGallery = Array.isArray(cfg.audioGallery) ? cfg.audioGallery : [];
+    cfg.audioGallery = audioGallery
+      .filter((asset): asset is AudioGalleryAsset => Boolean(asset) && typeof asset === "object" && typeof (asset as AudioGalleryAsset).dataUrl === "string")
+      .map((asset, index) => ({
+        id: String(asset.id || `audio_asset_${index + 1}`),
+        name: typeof asset.name === "string" ? asset.name : `Audio ${index + 1}`,
+        mimeType: typeof asset.mimeType === "string" ? asset.mimeType : "audio/mpeg",
+        dataUrl: String(asset.dataUrl || ""),
+        durationSec: Number.isFinite(Number(asset.durationSec)) ? Number(asset.durationSec) : undefined,
+      }));
   }
 
   function normalizeGalleryLightsFromCm(cfg: ShowConfig) {
@@ -394,6 +415,7 @@ export function createSceneConfigController(deps: SceneConfigControllerDeps) {
     normalizeRoomsFromCm(cfg.rooms);
     normalizeCustomWallsFromCm(cfg);
     normalizeGalleryLightsFromCm(cfg);
+    normalizeAudioGallery(cfg);
     status.refs.setRoomsById(new Map(cfg.rooms.map((room) => [room.id, room])));
     syncRoomOptions(cfg.rooms);
     normalizePaintings(cfg.paintings);

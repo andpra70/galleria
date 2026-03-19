@@ -82,7 +82,10 @@ export function createPaintingCardController(deps: PaintingCardControllerDeps) {
     artEditDomElements.artEditFrameColor.value = painting.frameColor ?? "#423934";
     artEditDomElements.artEditCenterYCm.value = String(Math.round(mToCm(painting.centerY ?? 1.65)));
     artEditDomElements.artEditImageUrl.value = painting.image ?? "";
-    artEditDomElements.artEditAudioStatus.textContent = (painting.audioMp4 ?? "").trim() ? "Audio MP4 incorporato" : "Nessun audio";
+    artEditDomElements.artEditAudioStatus.textContent = (painting.audioMp4 ?? "").trim() ? "File audio selezionato" : "Nessun audio";
+    artEditDomElements.artEditAudioSelect.value = (painting.audioAssetId ?? "").trim();
+    artEditDomElements.artEditAudioStartSec.value = String(Number.isFinite(Number(painting.audioStartSec)) ? Number(painting.audioStartSec) : 0);
+    artEditDomElements.artEditAudioEndSec.value = Number.isFinite(Number(painting.audioEndSec)) ? String(Number(painting.audioEndSec)) : "";
     artEditDomElements.artEditAudioToggle.textContent = "Play audio";
     artEditDomElements.artEditAudioToggle.disabled = !(painting.audioMp4 ?? "").trim();
     artEditDomElements.artEditAudioClear.disabled = !(painting.audioMp4 ?? "").trim();

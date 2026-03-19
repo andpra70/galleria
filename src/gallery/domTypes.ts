@@ -25,6 +25,10 @@ export type ArtEditDomElements = {
   artEditCenterYCm: HTMLInputElement;
   artEditImageUrl: HTMLInputElement;
   artEditAudioStatus: HTMLElement;
+  artEditAudioSelect: HTMLSelectElement;
+  artEditAudioWaveform: HTMLCanvasElement;
+  artEditAudioStartSec: HTMLInputElement;
+  artEditAudioEndSec: HTMLInputElement;
   artEditAudioToggle: HTMLButtonElement;
   artEditAudioUpload: HTMLButtonElement;
   artEditAudioClear: HTMLButtonElement;

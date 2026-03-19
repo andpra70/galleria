@@ -90,8 +90,8 @@ export function createPaintingEditorHandlers(deps: PaintingEditorHandlersDeps) {
   }
 
   function syncAudioControls(painting: GalleryPainting | null | undefined) {
-    const hasAudio = Boolean((painting?.audioMp4 ?? "").trim());
-    artEditAudioStatus.textContent = hasAudio ? "Audio MP4 incorporato" : "Nessun audio";
+    const hasAudio = Boolean((painting?.audioAssetId ?? "").trim() || (painting?.audioMp4 ?? "").trim());
+    artEditAudioStatus.textContent = hasAudio ? "Audio in audioGallery" : "Nessun audio";
     artEditAudioToggle.disabled = !hasAudio;
     if (!hasAudio) {
       artEditAudioToggle.textContent = "Play audio";

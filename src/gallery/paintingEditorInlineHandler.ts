@@ -19,6 +19,10 @@ type PaintingEditorInlineDeps = {
     artEditWidthCm: HTMLInputElement;
     artEditCenterYCm: HTMLInputElement;
     artEditImageUrl: HTMLInputElement;
+    artEditAudioSelect: HTMLSelectElement;
+    artEditAudioWaveform: HTMLCanvasElement;
+    artEditAudioStartSec: HTMLInputElement;
+    artEditAudioEndSec: HTMLInputElement;
     artEditHeightCm: HTMLInputElement;
     artEditFrameBorderCm: HTMLInputElement;
     artEditFrameColor: HTMLInputElement;
@@ -81,6 +85,9 @@ export function createPaintingEditorInlineHandler(deps: PaintingEditorInlineDeps
     artEditWidthCm,
     artEditCenterYCm,
     artEditImageUrl,
+    artEditAudioSelect,
+    artEditAudioStartSec,
+    artEditAudioEndSec,
     artEditHeightCm,
     artEditFrameBorderCm,
     artEditFrameColor,
@@ -197,6 +204,16 @@ export function createPaintingEditorInlineHandler(deps: PaintingEditorInlineDeps
     painting.frameBorderCm = Math.max(0, parseNumberOrFallback(artEditFrameBorderCm.value, painting.frameBorderCm ?? 6));
     painting.frameColor = (artEditFrameColor.value || "").trim() || "#423934";
     painting.synopsis = nextSynopsis;
+    painting.audioAssetId = (artEditAudioSelect.value || "").trim();
+    if (painting.audioAssetId) {
+      const asset = (Array.isArray(config.audioGallery) ? config.audioGallery : []).find((candidate) => candidate.id === painting.audioAssetId);
+      painting.audioMp4 = asset?.dataUrl ?? "";
+    } else {
+      painting.audioMp4 = "";
+    }
+    painting.audioStartSec = Math.max(0, Number(artEditAudioStartSec.value || 0) || 0);
+    const audioEndRaw = Number(artEditAudioEndSec.value);
+    painting.audioEndSec = Number.isFinite(audioEndRaw) && audioEndRaw > painting.audioStartSec ? audioEndRaw : undefined;
 
     const nextImageUrl = (artEditImageUrl.value || "").trim();
     if (nextImageUrl && nextImageUrl !== painting.image && entry) {
@@ -222,6 +239,8 @@ export function createPaintingEditorInlineHandler(deps: PaintingEditorInlineDeps
       entry.paintingSpot.description = painting.description;
       entry.paintingSpot.synopsis = nextSynopsis;
       entry.paintingSpot.audioMp4 = (painting.audioMp4 || "").trim() || undefined;
+      entry.paintingSpot.audioStartSec = Number.isFinite(Number(painting.audioStartSec)) ? Number(painting.audioStartSec) : undefined;
+      entry.paintingSpot.audioEndSec = Number.isFinite(Number(painting.audioEndSec)) ? Number(painting.audioEndSec) : undefined;
     }
 
     if (nextId !== prevId) {

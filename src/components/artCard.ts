@@ -108,12 +108,27 @@ export function renderArtCard() {
             <div id="art-edit-audio-drop-zone" class="art-edit-audio-drop-zone">
               <strong>Audio opera</strong>
               <span id="art-edit-audio-status" class="edit-field">Nessun audio</span>
+              <label class="edit-field" for="art-edit-audio-select">File audio</label>
+              <select id="art-edit-audio-select">
+                <option value="">Nessun audio</option>
+              </select>
+              <canvas id="art-edit-audio-waveform" width="720" height="120" aria-label="Forma d'onda audio"></canvas>
+              <div class="art-edit-inline-row">
+                <div class="art-edit-inline-field">
+                  <label class="edit-field" for="art-edit-audio-start-sec">Start (sec)</label>
+                  <input id="art-edit-audio-start-sec" type="number" min="0" step="0.1" value="0" />
+                </div>
+                <div class="art-edit-inline-field">
+                  <label class="edit-field" for="art-edit-audio-end-sec">Stop (sec)</label>
+                  <input id="art-edit-audio-end-sec" type="number" min="0" step="0.1" value="" />
+                </div>
+              </div>
               <div class="art-edit-audio-actions">
                 <button id="art-edit-audio-toggle" type="button">Play audio</button>
-                <button id="art-edit-audio-upload" type="button">Carica audio MP4</button>
+                <button id="art-edit-audio-upload" type="button">Carica audio</button>
                 <button id="art-edit-audio-clear" type="button">Rimuovi audio</button>
               </div>
-              <p class="art-edit-audio-help">Trascina qui un file MP4/M4A oppure usa il pulsante di caricamento.</p>
+              <p class="art-edit-audio-help">Trascina qui un file MP3/MP4/M4A. Il file viene caricato su audiogallery e qui scegli start/stop.</p>
               <input id="art-edit-audio-file" type="file" accept=".mp3,audio/mpeg,.mp4,audio/mp4,video/mp4,audio/x-m4a,.m4a" hidden />
             </div>
           </section>

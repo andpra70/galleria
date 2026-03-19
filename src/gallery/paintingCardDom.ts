@@ -1,5 +1,6 @@
 import type { ArtCardDomElements, ArtEditDomElements } from "./domTypes";
 import type { PaintingSpot } from "./types";
+import { resolveFileserverRawUrl } from "./url";
 
 export function renderPaintingCardContentDom(elements: ArtCardDomElements, paintingSpot: PaintingSpot) {
   const { artCardTitle, artCardDescription, artCardImage, artCardSynoptic, artCardAudioToggle, artCardAudio } = elements;
@@ -17,13 +18,17 @@ export function renderPaintingCardContentDom(elements: ArtCardDomElements, paint
   artCardAudio.pause();
   artCardAudio.currentTime = 0;
   if ((paintingSpot.audioMp4 || "").trim()) {
-    artCardAudio.src = paintingSpot.audioMp4 ?? "";
+    artCardAudio.src = resolveFileserverRawUrl(paintingSpot.audioMp4);
+    artCardAudio.dataset.startSec = String(Number.isFinite(Number(paintingSpot.audioStartSec)) ? Number(paintingSpot.audioStartSec) : 0);
+    artCardAudio.dataset.endSec = Number.isFinite(Number(paintingSpot.audioEndSec)) ? String(Number(paintingSpot.audioEndSec)) : "";
     artCardAudioToggle.hidden = false;
     artCardAudioToggle.dataset.playing = "false";
     artCardAudioToggle.textContent = "🔊";
     artCardAudioToggle.title = "Riproduci audio opera";
   } else {
     artCardAudio.removeAttribute("src");
+    delete artCardAudio.dataset.startSec;
+    delete artCardAudio.dataset.endSec;
     artCardAudio.load();
     artCardAudioToggle.hidden = true;
     artCardAudioToggle.dataset.playing = "false";
@@ -64,6 +69,10 @@ export function resetEditPanelDom(elements: ArtEditDomElements) {
     artEditCenterYCm,
     artEditImageUrl,
     artEditAudioStatus,
+    artEditAudioSelect,
+    artEditAudioWaveform,
+    artEditAudioStartSec,
+    artEditAudioEndSec,
     artEditAudioToggle,
     artEditAudioFile,
     artEditAudioDropZone,
@@ -92,6 +101,11 @@ export function resetEditPanelDom(elements: ArtEditDomElements) {
   artEditCenterYCm.value = "";
   artEditImageUrl.value = "";
   artEditAudioStatus.textContent = "Nessun audio";
+  artEditAudioSelect.value = "";
+  const waveformCtx = artEditAudioWaveform.getContext("2d");
+  waveformCtx?.clearRect(0, 0, artEditAudioWaveform.width, artEditAudioWaveform.height);
+  artEditAudioStartSec.value = "0";
+  artEditAudioEndSec.value = "";
   artEditAudioToggle.textContent = "Play audio";
   artEditAudioToggle.disabled = true;
   artEditAudioFile.value = "";

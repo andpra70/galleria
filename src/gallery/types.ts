@@ -26,7 +26,10 @@ export interface GalleryPainting {
   description?: string;
   synopsis?: Record<string, string>;
   image?: string;
+  audioAssetId?: string;
   audioMp4?: string;
+  audioStartSec?: number;
+  audioEndSec?: number;
   roomId?: string;
   wall?: WallSide | string;
   offset?: number;
@@ -202,10 +205,19 @@ export type RenderingConfigWithFloorTexture = RenderingConfig & {
   floorTexture?: FloorTextureConfig;
 };
 
+export interface AudioGalleryAsset {
+  id: string;
+  name?: string;
+  mimeType?: string;
+  dataUrl: string;
+  durationSec?: number;
+}
+
 export interface ShowConfig {
   projectName?: string;
   rooms: GalleryRoom[];
   paintings: GalleryPainting[];
+  audioGallery?: AudioGalleryAsset[];
   customWalls?: CustomWallConfig[];
   galleryLights?: GallerySpotLightConfig[];
   visitor?: VisitorConfig;
@@ -228,6 +240,8 @@ export interface PaintingCardViewModel {
   synopsis: Record<string, string>;
   image: string;
   audioMp4?: string;
+  audioStartSec?: number;
+  audioEndSec?: number;
   center: THREE_NS.Vector3;
   normal: THREE_NS.Vector3;
   width: number;
@@ -241,6 +255,8 @@ export interface PaintingSpot {
   synopsis: Record<string, string>;
   image: string;
   audioMp4?: string;
+  audioStartSec?: number;
+  audioEndSec?: number;
   center: THREE_NS.Vector3;
   normal: THREE_NS.Vector3;
   width: number;

@@ -18,6 +18,20 @@ export function resolveAppUrl(url: string | null | undefined): string {
   return new URL(relativeCandidate, getAppBaseUrl()).toString();
 }
 
+export function resolveFileserverRawUrl(path: string | null | undefined): string {
+  const candidate = (path ?? "").trim();
+  if (!candidate) {
+    return "";
+  }
+  if (EXTERNAL_OR_SPECIAL_URL_RE.test(candidate)) {
+    return candidate;
+  }
+  const apiBase = String(import.meta.env.VITE_FILESERVER_API_BASE || "/fileserver/api").replace(/\/+$/, "");
+  const url = new URL(`${apiBase}/raw`, document.baseURI);
+  url.searchParams.set("path", candidate);
+  return url.toString();
+}
+
 export function isBlobUrl(url: string | null | undefined): boolean {
   return BLOB_URL_RE.test((url ?? "").trim());
 }

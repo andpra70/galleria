@@ -71,9 +71,12 @@ export function createFileserverClient(options: FileserverClientOptions) {
       });
     },
     async uploadTextFile(path: string, filename: string, content: string, contentType = "application/json") {
+      return this.uploadFile(path, new File([content], filename, { type: contentType }));
+    },
+    async uploadFile(path: string, file: File) {
       const formData = new FormData();
       formData.append("path", path);
-      formData.append("files", new File([content], filename, { type: contentType }));
+      formData.append("files", file);
 
       const response = await fetch(`${apiBase}/upload`, {
         method: "POST",
@@ -141,6 +144,20 @@ export function hasFileserverDirectoryChild(value: unknown, childName: string): 
     const entry = item as FileserverDirectoryItem;
     return entry.type === "directory" && entry.name === childName;
   });
+}
+
+export function extractFileserverFileNames(value: unknown): string[] {
+  if (!value || typeof value !== "object") {
+    return [];
+  }
+  const items = (value as FileserverDirectoryResponse).items;
+  if (!Array.isArray(items)) {
+    return [];
+  }
+  return items
+    .filter((item): item is FileserverDirectoryItem => Boolean(item) && typeof item === "object")
+    .filter((item) => item.type === "file" && typeof item.name === "string" && item.name.trim())
+    .map((item) => String(item.name));
 }
 
 export function extractFileserverTextContent(value: unknown): string {

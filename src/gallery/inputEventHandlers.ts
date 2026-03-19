@@ -164,9 +164,12 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
     const cloned = JSON.parse(JSON.stringify(status.refs.getConfig()));
     cloned.projectName = normalizeProjectName(cloned.projectName);
     cloned.paintings = Array.isArray(cloned.paintings) ? cloned.paintings : [];
-    cloned.paintings.forEach((painting: { image?: unknown }) => {
+    cloned.paintings.forEach((painting: { image?: unknown; audioMp4?: unknown }) => {
       if (typeof painting.image === "string" && isBlobUrl(painting.image)) {
         painting.image = "";
+      }
+      if (typeof painting.audioMp4 === "string") {
+        delete painting.audioMp4;
       }
     });
     return cloned;

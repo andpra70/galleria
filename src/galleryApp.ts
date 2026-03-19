@@ -30,7 +30,7 @@ import type {
   WallSide,
 } from "./gallery/types";
 import { getFirstImageFile, isValidShowConfig } from "./gallery/files";
-import { createFileserverClient } from "./gallery/fileserverClient";
+import { createFileserverClient, extractFileserverFileNames, getFileserverDirectoryPath, hasFileserverDirectoryChild } from "./gallery/fileserverClient";
 import { generatePaintingId as nextPaintingId, generateWallId } from "./gallery/idGenerators";
 import { attachGalleryInput } from "./gallery/inputBindings";
 import {
@@ -136,6 +136,10 @@ const artEditFrameColor = mustEl<HTMLInputElement>("art-edit-frame-color");
 const artEditCenterYCm = mustEl<HTMLInputElement>("art-edit-center-y-cm");
 const artEditImageUrl = mustEl<HTMLInputElement>("art-edit-image-url");
 const artEditAudioStatus = mustEl<HTMLElement>("art-edit-audio-status");
+const artEditAudioSelect = mustEl<HTMLSelectElement>("art-edit-audio-select");
+const artEditAudioWaveform = mustEl<HTMLCanvasElement>("art-edit-audio-waveform");
+const artEditAudioStartSec = mustEl<HTMLInputElement>("art-edit-audio-start-sec");
+const artEditAudioEndSec = mustEl<HTMLInputElement>("art-edit-audio-end-sec");
 const artEditAudioToggle = mustEl<HTMLButtonElement>("art-edit-audio-toggle");
 const artEditAudioUpload = mustEl<HTMLButtonElement>("art-edit-audio-upload");
 const artEditAudioClear = mustEl<HTMLButtonElement>("art-edit-audio-clear");
@@ -546,6 +550,8 @@ const requestedProjectFromUrl = (() => {
 const showConfigPanel = urlSearchParams.get("edit") === "1" || galleryBootstrap.edit === true;
 const readOnlyMode = Boolean(galleryBootstrap.readOnly) && !showConfigPanel;
 const requestedConfigPath = (galleryBootstrap.configPath ?? "config/gallery.json").trim() || "config/gallery.json";
+const DEFAULT_FILESERVER_API_BASE = (import.meta.env.VITE_FILESERVER_API_BASE || "/fileserver/api").trim();
+const DEFAULT_FILESERVER_AUDIO_DIRECTORY = (import.meta.env.VITE_FILESERVER_AUDIO_DIRECTORY || "audiogallery").trim();
 const ART_CARD_IMAGE_MIN_SCALE = 1;
 const ART_CARD_IMAGE_MAX_SCALE = 5;
 let artCardImageScale = 1;
@@ -563,6 +569,14 @@ let artCardPinchStartTranslateX = 0;
 let artCardPinchStartTranslateY = 0;
 let artCardPinchStartMidX = 0;
 let artCardPinchStartMidY = 0;
+let artCardAudioStopAtSec: number | null = null;
+let audioLibraryFiles: string[] = [];
+let audioWaveformPeaks: number[] = [];
+let audioWaveformDurationSec = 0;
+let audioWaveformPointerMode: "start" | "end" | "range" | null = null;
+let audioWaveformDragStartX = 0;
+let audioWaveformDragStartStartSec = 0;
+let audioWaveformDragStartEndSec = 0;
 
 const world = new THREE.Group();
 scene.add(world);
@@ -586,6 +600,10 @@ const artEditDomElements = {
   artEditCenterYCm,
   artEditImageUrl,
   artEditAudioStatus,
+  artEditAudioSelect,
+  artEditAudioWaveform,
+  artEditAudioStartSec,
+  artEditAudioEndSec,
   artEditAudioToggle,
   artEditAudioUpload,
   artEditAudioClear,
@@ -878,6 +896,10 @@ const onInlineEditChanged = createPaintingEditorInlineHandler({
     artEditFrameColor,
     artEditCenterYCm,
     artEditImageUrl,
+    artEditAudioSelect,
+    artEditAudioWaveform,
+    artEditAudioStartSec,
+    artEditAudioEndSec,
     artEditSynopsisList,
     artCardDomElements,
   },
@@ -1090,7 +1112,9 @@ async function init() {
   attachInput();
   attachArtEditTabs();
   attachArtCardImageZoom();
+  attachAudioWaveformEditor();
   attachConfigPanel();
+  void refreshArtEditAudioFileOptions();
   syncConfigPanelFromConfig();
   appShell.classList.toggle("hide-config", !showConfigPanel);
   setEditMode(showConfigPanel);
@@ -1141,6 +1165,82 @@ function resetArtCardImageTransform() {
   applyArtCardImageTransform();
 }
 
+function getAudioGallery() {
+  config.audioGallery = Array.isArray(config.audioGallery) ? config.audioGallery : [];
+  return config.audioGallery;
+}
+
+function sanitizeAudioAssetId(fileName: string) {
+  const normalized = String(fileName || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return normalized || `audio-${Date.now()}`;
+}
+
+function findAudioAssetById(assetId: string | null | undefined) {
+  const normalizedId = String(assetId || "").trim();
+  if (!normalizedId) {
+    return null;
+  }
+  return getAudioGallery().find((asset) => asset.id === normalizedId) ?? null;
+}
+
+function syncArtEditAudioFileOptions(selectedAssetId = "") {
+  audioLibraryFiles = getAudioGallery().map((asset) => asset.id);
+  const currentValue = selectedAssetId || artEditAudioSelect.value || "";
+  artEditAudioSelect.innerHTML = "";
+  const emptyOption = document.createElement("option");
+  emptyOption.value = "";
+  emptyOption.textContent = "Nessun audio";
+  artEditAudioSelect.appendChild(emptyOption);
+  getAudioGallery().forEach((asset) => {
+    const option = document.createElement("option");
+    option.value = asset.id;
+    option.textContent = asset.name || asset.id;
+    artEditAudioSelect.appendChild(option);
+  });
+  if (currentValue && !getAudioGallery().some((asset) => asset.id === currentValue)) {
+    const option = document.createElement("option");
+    option.value = currentValue;
+    option.textContent = `${currentValue} (mancante)`;
+    artEditAudioSelect.appendChild(option);
+  }
+  artEditAudioSelect.value = currentValue || "";
+}
+
+async function refreshArtEditAudioFileOptions(selectedPath = "") {
+  syncArtEditAudioFileOptions(selectedPath);
+}
+
+async function uploadAudioFileToLibrary(file: File) {
+  const assetId = sanitizeAudioAssetId(file.name);
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string" && reader.result.trim()) {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error("Impossibile leggere il file audio"));
+    };
+    reader.onerror = () => reject(new Error("Impossibile leggere il file audio"));
+    reader.readAsDataURL(file);
+  });
+  const nextGallery = getAudioGallery().filter((asset) => asset.id !== assetId);
+  nextGallery.push({
+    id: assetId,
+    name: file.name,
+    mimeType: file.type || "audio/mpeg",
+    dataUrl,
+  });
+  config.audioGallery = nextGallery;
+  await refreshArtEditAudioFileOptions(assetId);
+  return assetId;
+}
+
 function zoomArtCardImageAt(nextScaleRaw: number, originClientX: number, originClientY: number) {
   const nextScale = clampNumber(nextScaleRaw, ART_CARD_IMAGE_MIN_SCALE, ART_CARD_IMAGE_MAX_SCALE);
   const previousScale = artCardImageScale;
@@ -1159,6 +1259,205 @@ function zoomArtCardImageAt(nextScaleRaw: number, originClientX: number, originC
     artCardImageTranslateY = 0;
   }
   applyArtCardImageTransform();
+}
+
+function syncAudioToggleLabels(isPlaying: boolean) {
+  artCardAudioToggle.dataset.playing = isPlaying ? "true" : "false";
+  artCardAudioToggle.textContent = isPlaying ? "■" : "🔊";
+  artCardAudioToggle.title = isPlaying ? "Ferma audio opera" : "Riproduci audio opera";
+  artEditAudioToggle.textContent = isPlaying ? "Stop audio" : "Play audio";
+}
+
+function configureCurrentPaintingAudioRange() {
+  const startSec = uiState.editMode
+    ? Math.max(0, Number(artEditAudioStartSec.value || 0) || 0)
+    : Math.max(0, Number(artCardAudio.dataset.startSec || 0) || 0);
+  const endRaw = uiState.editMode ? Number(artEditAudioEndSec.value || "") : Number(artCardAudio.dataset.endSec || "");
+  artCardAudioStopAtSec = Number.isFinite(endRaw) && endRaw > startSec ? endRaw : null;
+  artCardAudio.currentTime = startSec;
+}
+
+async function playCurrentPaintingAudio() {
+  if (!(artCardAudio.src || "").trim()) {
+    return;
+  }
+  configureCurrentPaintingAudioRange();
+  await artCardAudio.play();
+  syncAudioToggleLabels(true);
+}
+
+function stopCurrentPaintingAudio() {
+  artCardAudio.pause();
+  const startSec = Math.max(0, Number(artCardAudio.dataset.startSec || 0) || 0);
+  artCardAudio.currentTime = startSec;
+  syncAudioToggleLabels(false);
+}
+
+function getAudioWaveformCtx() {
+  return artEditAudioWaveform.getContext("2d");
+}
+
+function getWaveformDurationSec() {
+  return Math.max(0.01, audioWaveformDurationSec || 1);
+}
+
+function secToWaveformX(sec: number) {
+  return (Math.max(0, sec) / getWaveformDurationSec()) * artEditAudioWaveform.width;
+}
+
+function waveformXToSec(x: number) {
+  return clampNumber((x / artEditAudioWaveform.width) * getWaveformDurationSec(), 0, getWaveformDurationSec());
+}
+
+function drawAudioWaveform() {
+  const ctx = getAudioWaveformCtx();
+  if (!ctx) {
+    return;
+  }
+  const width = artEditAudioWaveform.width;
+  const height = artEditAudioWaveform.height;
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = "#f8fafc";
+  ctx.fillRect(0, 0, width, height);
+  if (!audioWaveformPeaks.length) {
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = "14px Segoe UI";
+    ctx.fillText("Carica o seleziona un audio per vedere la forma d'onda", 18, height / 2);
+    return;
+  }
+  const startSec = Math.max(0, Number(artEditAudioStartSec.value || 0) || 0);
+  const endSecRaw = Number(artEditAudioEndSec.value || "");
+  const effectiveEndSec = Number.isFinite(endSecRaw) && endSecRaw > startSec ? endSecRaw : getWaveformDurationSec();
+  const startX = secToWaveformX(startSec);
+  const endX = secToWaveformX(effectiveEndSec);
+  ctx.fillStyle = "#e2e8f0";
+  ctx.fillRect(0, 0, width, height);
+  ctx.fillStyle = "rgba(15, 118, 110, 0.18)";
+  ctx.fillRect(startX, 0, Math.max(0, endX - startX), height);
+  ctx.strokeStyle = "#64748b";
+  ctx.lineWidth = 1;
+  const midY = height / 2;
+  const barWidth = width / audioWaveformPeaks.length;
+  audioWaveformPeaks.forEach((peak, index) => {
+    const barHeight = Math.max(1, peak * (height * 0.45));
+    const x = index * barWidth;
+    const isSelected = x + barWidth >= startX && x <= endX;
+    ctx.strokeStyle = isSelected ? "#0f766e" : "#94a3b8";
+    ctx.beginPath();
+    ctx.moveTo(x + barWidth * 0.5, midY - barHeight);
+    ctx.lineTo(x + barWidth * 0.5, midY + barHeight);
+    ctx.stroke();
+  });
+  ctx.strokeStyle = "#b45309";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(startX, 0);
+  ctx.lineTo(startX, height);
+  ctx.moveTo(endX, 0);
+  ctx.lineTo(endX, height);
+  ctx.stroke();
+  if (!artCardAudio.paused) {
+    const playheadX = secToWaveformX(artCardAudio.currentTime);
+    ctx.strokeStyle = "#111827";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(playheadX, 0);
+    ctx.lineTo(playheadX, height);
+    ctx.stroke();
+  }
+}
+
+async function loadAudioWaveformForAsset(assetId: string | null | undefined) {
+  const asset = findAudioAssetById(assetId);
+  if (!asset?.dataUrl) {
+    audioWaveformPeaks = [];
+    audioWaveformDurationSec = 0;
+    drawAudioWaveform();
+    return;
+  }
+  try {
+    const response = await fetch(asset.dataUrl);
+    const arrayBuffer = await response.arrayBuffer();
+    const audioContext = new AudioContext();
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+    const samples = audioBuffer.getChannelData(0);
+    const bars = 180;
+    const blockSize = Math.max(1, Math.floor(samples.length / bars));
+    const peaks: number[] = [];
+    for (let index = 0; index < bars; index += 1) {
+      let sum = 0;
+      const start = index * blockSize;
+      const end = Math.min(samples.length, start + blockSize);
+      for (let offset = start; offset < end; offset += 1) {
+        sum = Math.max(sum, Math.abs(samples[offset] || 0));
+      }
+      peaks.push(sum);
+    }
+    audioWaveformPeaks = peaks;
+    audioWaveformDurationSec = audioBuffer.duration || asset.durationSec || 0;
+    asset.durationSec = audioWaveformDurationSec;
+    void audioContext.close();
+  } catch (error) {
+    console.warn("Impossibile generare la forma d'onda audio", error);
+    audioWaveformPeaks = [];
+    audioWaveformDurationSec = 0;
+  }
+  drawAudioWaveform();
+}
+
+function attachAudioWaveformEditor() {
+  const handlePointerUp = () => {
+    if (audioWaveformPointerMode) {
+      audioWaveformPointerMode = null;
+      artEditAudioStartSec.dispatchEvent(new Event("change", { bubbles: true }));
+      artEditAudioEndSec.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  };
+  artEditAudioWaveform.addEventListener("pointerdown", (event) => {
+    if (!audioWaveformPeaks.length) {
+      return;
+    }
+    const rect = artEditAudioWaveform.getBoundingClientRect();
+    const x = clampNumber(event.clientX - rect.left, 0, rect.width);
+    const startSec = Math.max(0, Number(artEditAudioStartSec.value || 0) || 0);
+    const endSecRaw = Number(artEditAudioEndSec.value || "");
+    const endSec = Number.isFinite(endSecRaw) && endSecRaw > startSec ? endSecRaw : getWaveformDurationSec();
+    const startX = secToWaveformX(startSec) * (rect.width / artEditAudioWaveform.width);
+    const endX = secToWaveformX(endSec) * (rect.width / artEditAudioWaveform.width);
+    const hitRadius = 14;
+    audioWaveformPointerMode =
+      Math.abs(x - startX) <= hitRadius ? "start" :
+      Math.abs(x - endX) <= hitRadius ? "end" :
+      x >= startX && x <= endX ? "range" :
+      "start";
+    audioWaveformDragStartX = x;
+    audioWaveformDragStartStartSec = startSec;
+    audioWaveformDragStartEndSec = endSec;
+    artEditAudioWaveform.setPointerCapture(event.pointerId);
+  });
+  artEditAudioWaveform.addEventListener("pointermove", (event) => {
+    if (!audioWaveformPointerMode) {
+      return;
+    }
+    const rect = artEditAudioWaveform.getBoundingClientRect();
+    const x = clampNumber(event.clientX - rect.left, 0, rect.width);
+    const deltaSec = ((x - audioWaveformDragStartX) / rect.width) * getWaveformDurationSec();
+    if (audioWaveformPointerMode === "start") {
+      const nextStart = clampNumber(waveformXToSec(x * (artEditAudioWaveform.width / rect.width)), 0, audioWaveformDragStartEndSec);
+      artEditAudioStartSec.value = nextStart.toFixed(2);
+    } else if (audioWaveformPointerMode === "end") {
+      const nextEnd = clampNumber(waveformXToSec(x * (artEditAudioWaveform.width / rect.width)), audioWaveformDragStartStartSec, getWaveformDurationSec());
+      artEditAudioEndSec.value = nextEnd.toFixed(2);
+    } else if (audioWaveformPointerMode === "range") {
+      const range = Math.max(0.05, audioWaveformDragStartEndSec - audioWaveformDragStartStartSec);
+      const nextStart = clampNumber(audioWaveformDragStartStartSec + deltaSec, 0, Math.max(0, getWaveformDurationSec() - range));
+      artEditAudioStartSec.value = nextStart.toFixed(2);
+      artEditAudioEndSec.value = (nextStart + range).toFixed(2);
+    }
+    drawAudioWaveform();
+  });
+  artEditAudioWaveform.addEventListener("pointerup", handlePointerUp);
+  artEditAudioWaveform.addEventListener("pointercancel", handlePointerUp);
 }
 
 function attachArtCardImageZoom() {
@@ -1351,6 +1650,13 @@ function setActiveArtEditTab(tabId: string) {
     panel.classList.toggle("active", selected);
     panel.hidden = !selected;
   });
+  if (tabId === "audio") {
+    const currentPainting = cardState.paintingId
+      ? config.paintings.find((painting) => painting.id === cardState.paintingId)
+      : null;
+    void refreshArtEditAudioFileOptions((currentPainting?.audioAssetId || "").trim());
+    void loadAudioWaveformForAsset(currentPainting?.audioAssetId);
+  }
 }
 
 function getCurrentVisitorRoomId() {
@@ -6219,6 +6525,9 @@ function attachInput() {
         artEditFrameColor,
         artEditCenterYCm,
         artEditImageUrl,
+        artEditAudioSelect,
+        artEditAudioStartSec,
+        artEditAudioEndSec,
       ],
       artEditSynopsisList,
       artEditSynopsisAdd,
@@ -6270,38 +6579,94 @@ function attachInput() {
       onCardImageDrop: paintingEditorHandlers.onCardImageDrop,
     }
   );
-  artEditAudioUpload.addEventListener("click", paintingEditorHandlers.onAudioUploadClick);
+  const dispatchAudioSelectionChange = () => {
+    artEditAudioSelect.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+  artEditAudioSelect.addEventListener("change", () => {
+    const asset = findAudioAssetById(artEditAudioSelect.value);
+    artEditAudioStatus.textContent = asset ? `Selezionato: ${asset.name || asset.id}` : "Nessun audio";
+    artEditAudioToggle.disabled = !asset;
+    artEditAudioClear.disabled = !asset;
+    void loadAudioWaveformForAsset(asset?.id);
+  });
+  artEditAudioStartSec.addEventListener("input", drawAudioWaveform);
+  artEditAudioEndSec.addEventListener("input", drawAudioWaveform);
+  artEditAudioUpload.addEventListener("click", () => {
+    artEditAudioFile.click();
+  });
   artEditAudioToggle.addEventListener("click", async () => {
     if (artEditAudioToggle.disabled || !(artCardAudio.src || "").trim()) {
       return;
     }
     if (artCardAudio.paused) {
       try {
-        await artCardAudio.play();
-        artCardAudioToggle.dataset.playing = "true";
-        artCardAudioToggle.textContent = "■";
-        artCardAudioToggle.title = "Ferma audio opera";
-        artEditAudioToggle.textContent = "Stop audio";
+        await playCurrentPaintingAudio();
       } catch (error) {
         console.warn("Impossibile riprodurre l'audio dell'opera", error);
       }
       return;
     }
-    artCardAudio.pause();
-    artCardAudio.currentTime = 0;
-    artCardAudioToggle.dataset.playing = "false";
-    artCardAudioToggle.textContent = "🔊";
-    artCardAudioToggle.title = "Riproduci audio opera";
-    artEditAudioToggle.textContent = "Play audio";
+    stopCurrentPaintingAudio();
   });
   artEditAudioFile.addEventListener("change", () => {
-    void paintingEditorHandlers.onAudioFileChange();
+    const file = artEditAudioFile.files?.[0];
+    if (!file) {
+      return;
+    }
+    void (async () => {
+      try {
+        artEditAudioStatus.textContent = "Caricamento audio...";
+        const storedPath = await uploadAudioFileToLibrary(file);
+        artEditAudioSelect.value = storedPath;
+        artEditAudioStatus.textContent = "File audio embeddato in audioGallery";
+        dispatchAudioSelectionChange();
+      } catch (error) {
+        console.warn("Impossibile caricare l'audio su audiogallery", error);
+        artEditAudioStatus.textContent = "Errore caricamento audio";
+      } finally {
+        artEditAudioFile.value = "";
+      }
+    })();
   });
-  artEditAudioClear.addEventListener("click", paintingEditorHandlers.onAudioClear);
-  artEditAudioDropZone.addEventListener("dragover", paintingEditorHandlers.onAudioDropZoneDragOver);
-  artEditAudioDropZone.addEventListener("dragleave", paintingEditorHandlers.onAudioDropZoneDragLeave);
+  artEditAudioClear.addEventListener("click", () => {
+    stopCurrentPaintingAudio();
+    artEditAudioSelect.value = "";
+    artEditAudioStartSec.value = "0";
+    artEditAudioEndSec.value = "";
+    artEditAudioStatus.textContent = "Nessun audio";
+    dispatchAudioSelectionChange();
+  });
+  artEditAudioDropZone.addEventListener("dragover", (event) => {
+    const files = event.dataTransfer?.files;
+    const file = files?.[0];
+    if (!file) {
+      return;
+    }
+    event.preventDefault();
+    artEditAudioDropZone.classList.add("is-drop-target");
+  });
+  artEditAudioDropZone.addEventListener("dragleave", () => {
+    artEditAudioDropZone.classList.remove("is-drop-target");
+  });
   artEditAudioDropZone.addEventListener("drop", (event) => {
-    void paintingEditorHandlers.onAudioDropZoneDrop(event);
+    event.preventDefault();
+    artEditAudioDropZone.classList.remove("is-drop-target");
+    const file = event.dataTransfer?.files?.[0];
+    if (!file) {
+      return;
+    }
+    void (async () => {
+      try {
+        artEditAudioStatus.textContent = "Caricamento audio...";
+        const storedPath = await uploadAudioFileToLibrary(file);
+        artEditAudioSelect.value = storedPath;
+        artEditAudioStatus.textContent = "File audio embeddato in audioGallery";
+        dispatchAudioSelectionChange();
+      } catch (error) {
+        console.warn("Impossibile caricare l'audio su audiogallery", error);
+        artEditAudioStatus.textContent = "Errore caricamento audio";
+      }
+    })();
   });
   artCardAudioToggle.addEventListener("click", async () => {
     if (artCardAudioToggle.hidden || !(artCardAudio.src || "").trim()) {
@@ -6309,36 +6674,32 @@ function attachInput() {
     }
     if (artCardAudio.paused) {
       try {
-        await artCardAudio.play();
-        artCardAudioToggle.dataset.playing = "true";
-        artCardAudioToggle.textContent = "■";
-        artCardAudioToggle.title = "Ferma audio opera";
-        artEditAudioToggle.textContent = "Stop audio";
+        await playCurrentPaintingAudio();
       } catch (error) {
         console.warn("Impossibile riprodurre l'audio dell'opera", error);
       }
       return;
     }
-    artCardAudio.pause();
-    artCardAudio.currentTime = 0;
-    artCardAudioToggle.dataset.playing = "false";
-    artCardAudioToggle.textContent = "🔊";
-    artCardAudioToggle.title = "Riproduci audio opera";
-    artEditAudioToggle.textContent = "Play audio";
+    stopCurrentPaintingAudio();
+  });
+  artCardAudio.addEventListener("timeupdate", () => {
+    drawAudioWaveform();
+    if (artCardAudioStopAtSec != null && artCardAudio.currentTime >= artCardAudioStopAtSec) {
+      stopCurrentPaintingAudio();
+    }
   });
   artCardAudio.addEventListener("ended", () => {
-    artCardAudioToggle.dataset.playing = "false";
-    artCardAudioToggle.textContent = "🔊";
-    artCardAudioToggle.title = "Riproduci audio opera";
-    artEditAudioToggle.textContent = "Play audio";
+    syncAudioToggleLabels(false);
+    drawAudioWaveform();
   });
   artCardAudio.addEventListener("pause", () => {
     if (artCardAudio.ended) {
       return;
     }
-    artCardAudioToggle.dataset.playing = "false";
-    artCardAudioToggle.textContent = "🔊";
-    artCardAudioToggle.title = "Riproduci audio opera";
-    artEditAudioToggle.textContent = "Play audio";
+    syncAudioToggleLabels(false);
+    drawAudioWaveform();
+  });
+  artCardAudio.addEventListener("play", () => {
+    drawAudioWaveform();
   });
 }
