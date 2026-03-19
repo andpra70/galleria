@@ -73,6 +73,7 @@ export function resetEditPanelDom(elements: ArtEditDomElements) {
     artEditAudioWaveform,
     artEditAudioStartSec,
     artEditAudioEndSec,
+    artEditAudioAutoplay,
     artEditAudioToggle,
     artEditAudioPause,
     artEditAudioStop,
@@ -110,6 +111,7 @@ export function resetEditPanelDom(elements: ArtEditDomElements) {
   waveformCtx?.clearRect(0, 0, artEditAudioWaveform.width, artEditAudioWaveform.height);
   artEditAudioStartSec.value = "0";
   artEditAudioEndSec.value = "";
+  artEditAudioAutoplay.checked = true;
   artEditAudioToggle.textContent = "Play";
   artEditAudioToggle.disabled = true;
   artEditAudioPause.disabled = true;

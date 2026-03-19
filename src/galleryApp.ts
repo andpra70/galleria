@@ -140,6 +140,7 @@ const artEditAudioSelect = mustEl<HTMLSelectElement>("art-edit-audio-select");
 const artEditAudioWaveform = mustEl<HTMLCanvasElement>("art-edit-audio-waveform");
 const artEditAudioStartSec = mustEl<HTMLInputElement>("art-edit-audio-start-sec");
 const artEditAudioEndSec = mustEl<HTMLInputElement>("art-edit-audio-end-sec");
+const artEditAudioAutoplay = mustEl<HTMLInputElement>("art-edit-audio-autoplay");
 const artEditAudioToggle = mustEl<HTMLButtonElement>("art-edit-audio-toggle");
 const artEditAudioPause = mustEl<HTMLButtonElement>("art-edit-audio-pause");
 const artEditAudioStop = mustEl<HTMLButtonElement>("art-edit-audio-stop");
@@ -611,6 +612,7 @@ const artEditDomElements = {
   artEditAudioWaveform,
   artEditAudioStartSec,
   artEditAudioEndSec,
+  artEditAudioAutoplay,
   artEditAudioToggle,
   artEditAudioPause,
   artEditAudioStop,
@@ -835,6 +837,13 @@ const showEditPanelForEntry = paintingCardController.showEditPanelForEntry;
 const openPaintingCard = (paintingSpot: PaintingSpot) => {
   resetArtCardImageTransform();
   paintingCardController.openPaintingCard(paintingSpot);
+  if (paintingSpot.audioAutoplay !== false && (paintingSpot.audioMp4 || "").trim()) {
+    window.setTimeout(() => {
+      void playCurrentPaintingAudio().catch((error) => {
+        console.warn("Autoplay audio inspector bloccato o fallito", error);
+      });
+    }, 0);
+  }
 };
 const closePaintingCard = () => {
   paintingCardController.closePaintingCard();
@@ -911,6 +920,7 @@ const onInlineEditChanged = createPaintingEditorInlineHandler({
     artEditAudioWaveform,
     artEditAudioStartSec,
     artEditAudioEndSec,
+    artEditAudioAutoplay,
     artEditSynopsisList,
     artCardDomElements,
   },
@@ -6661,6 +6671,7 @@ function attachInput() {
         artEditAudioSelect,
         artEditAudioStartSec,
         artEditAudioEndSec,
+        artEditAudioAutoplay,
       ],
       artEditSynopsisList,
       artEditSynopsisAdd,

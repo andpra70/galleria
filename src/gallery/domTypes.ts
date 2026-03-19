@@ -29,6 +29,7 @@ export type ArtEditDomElements = {
   artEditAudioWaveform: HTMLCanvasElement;
   artEditAudioStartSec: HTMLInputElement;
   artEditAudioEndSec: HTMLInputElement;
+  artEditAudioAutoplay: HTMLInputElement;
   artEditAudioToggle: HTMLButtonElement;
   artEditAudioPause: HTMLButtonElement;
   artEditAudioStop: HTMLButtonElement;

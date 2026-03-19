@@ -23,6 +23,7 @@ type PaintingEditorInlineDeps = {
     artEditAudioWaveform: HTMLCanvasElement;
     artEditAudioStartSec: HTMLInputElement;
     artEditAudioEndSec: HTMLInputElement;
+    artEditAudioAutoplay: HTMLInputElement;
     artEditHeightCm: HTMLInputElement;
     artEditFrameBorderCm: HTMLInputElement;
     artEditFrameColor: HTMLInputElement;
@@ -88,6 +89,7 @@ export function createPaintingEditorInlineHandler(deps: PaintingEditorInlineDeps
     artEditAudioSelect,
     artEditAudioStartSec,
     artEditAudioEndSec,
+    artEditAudioAutoplay,
     artEditHeightCm,
     artEditFrameBorderCm,
     artEditFrameColor,
@@ -214,6 +216,7 @@ export function createPaintingEditorInlineHandler(deps: PaintingEditorInlineDeps
     painting.audioStartSec = Math.max(0, Number(artEditAudioStartSec.value || 0) || 0);
     const audioEndRaw = Number(artEditAudioEndSec.value);
     painting.audioEndSec = Number.isFinite(audioEndRaw) && audioEndRaw > painting.audioStartSec ? audioEndRaw : undefined;
+    painting.audioAutoplay = artEditAudioAutoplay.checked;
 
     const nextImageUrl = (artEditImageUrl.value || "").trim();
     if (nextImageUrl && nextImageUrl !== painting.image && entry) {
@@ -241,6 +244,7 @@ export function createPaintingEditorInlineHandler(deps: PaintingEditorInlineDeps
       entry.paintingSpot.audioMp4 = (painting.audioMp4 || "").trim() || undefined;
       entry.paintingSpot.audioStartSec = Number.isFinite(Number(painting.audioStartSec)) ? Number(painting.audioStartSec) : undefined;
       entry.paintingSpot.audioEndSec = Number.isFinite(Number(painting.audioEndSec)) ? Number(painting.audioEndSec) : undefined;
+      entry.paintingSpot.audioAutoplay = painting.audioAutoplay !== false;
     }
 
     if (nextId !== prevId) {

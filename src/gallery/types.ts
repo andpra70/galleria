@@ -30,6 +30,7 @@ export interface GalleryPainting {
   audioMp4?: string;
   audioStartSec?: number;
   audioEndSec?: number;
+  audioAutoplay?: boolean;
   roomId?: string;
   wall?: WallSide | string;
   offset?: number;
@@ -242,6 +243,7 @@ export interface PaintingCardViewModel {
   audioMp4?: string;
   audioStartSec?: number;
   audioEndSec?: number;
+  audioAutoplay?: boolean;
   center: THREE_NS.Vector3;
   normal: THREE_NS.Vector3;
   width: number;
@@ -257,6 +259,7 @@ export interface PaintingSpot {
   audioMp4?: string;
   audioStartSec?: number;
   audioEndSec?: number;
+  audioAutoplay?: boolean;
   center: THREE_NS.Vector3;
   normal: THREE_NS.Vector3;
   width: number;

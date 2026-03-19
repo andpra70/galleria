@@ -164,6 +164,7 @@ export function createPaintingBuilder(deps: PaintingBuilderDeps) {
       audioMp4: (painting.audioMp4 || "").trim() || undefined,
       audioStartSec: Number.isFinite(Number(painting.audioStartSec)) ? Number(painting.audioStartSec) : undefined,
       audioEndSec: Number.isFinite(Number(painting.audioEndSec)) ? Number(painting.audioEndSec) : undefined,
+      audioAutoplay: painting.audioAutoplay !== false,
       center: new THREE.Vector3(0, painting.centerY ?? 1.65, 0),
       normal: new THREE.Vector3(0, 0, 1),
       width: initialDimensions.width,

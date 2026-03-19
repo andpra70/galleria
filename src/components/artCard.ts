@@ -123,6 +123,10 @@ export function renderArtCard() {
                   <input id="art-edit-audio-end-sec" type="number" min="0" step="0.1" value="" />
                 </div>
               </div>
+              <label class="edit-field" for="art-edit-audio-autoplay">
+                <input id="art-edit-audio-autoplay" type="checkbox" checked />
+                Autoplay all'apertura inspector
+              </label>
               <div class="art-edit-audio-actions">
                 <button id="art-edit-audio-toggle" type="button">Play</button>
                 <button id="art-edit-audio-pause" type="button">Pause</button>
