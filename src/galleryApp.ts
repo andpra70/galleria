@@ -784,6 +784,8 @@ const {
     showEditPanelForEntry,
     closePaintingCard,
     setEditMode,
+    computePaintingViewPosition,
+    moveVisitorTo: movementActions.moveVisitorTo,
     getDeletePaintingEntry: () => deletePaintingEntry,
   });
 

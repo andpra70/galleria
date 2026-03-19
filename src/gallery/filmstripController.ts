@@ -17,17 +17,39 @@ type FilmstripControllerDeps = {
   showEditPanelForEntry: (entry: PaintingRegistryEntry) => void;
   closePaintingCard: () => void;
   setEditMode: (enabled: boolean) => void;
+  computePaintingViewPosition: (paintingSpot: PaintingSpot) => import("three").Vector3 | null;
+  moveVisitorTo: (target: import("three").Vector3, focusTarget: import("three").Vector3 | null) => void;
   getDeletePaintingEntry: () => ((entry: PaintingRegistryEntry, options?: DeletePaintingEntryOptions) => void) | undefined;
 };
 
 export function createFilmstripController(deps: FilmstripControllerDeps) {
-  const { app, createNewCatalogPainting, openPaintingCard, showEditPanelForEntry, closePaintingCard, setEditMode, getDeletePaintingEntry } = deps;
+  const {
+    app,
+    createNewCatalogPainting,
+    openPaintingCard,
+    showEditPanelForEntry,
+    closePaintingCard,
+    setEditMode,
+    computePaintingViewPosition,
+    moveVisitorTo,
+    getDeletePaintingEntry,
+  } = deps;
   const { status } = app;
   const { uiState, movement, visitor, cardState } = status;
   const { THREE } = app.runtime;
   const { filmstripItems } = app.dom;
   const { paintingRegistry } = app.collections;
   const { createPlaceholderPaintingImage, cmToM } = app.helpers;
+  const CLICK_DELAY_MS = 220;
+  let pendingClickTimer: number | null = null;
+
+  function clearPendingClick() {
+    if (pendingClickTimer === null) {
+      return;
+    }
+    window.clearTimeout(pendingClickTimer);
+    pendingClickTimer = null;
+  }
 
   async function addCatalogPaintingsFromFiles(files: File[]) {
     if (!files.length) {
@@ -124,6 +146,7 @@ export function createFilmstripController(deps: FilmstripControllerDeps) {
     const target = event.target as HTMLElement | null;
     const removeBtn = target?.closest(".filmstrip-remove") as HTMLElement | null;
     if (removeBtn) {
+      clearPendingClick();
       if (!uiState.editMode) {
         return;
       }
@@ -152,7 +175,7 @@ export function createFilmstripController(deps: FilmstripControllerDeps) {
       return;
     }
     const item = target?.closest(".filmstrip-item") as HTMLElement | null;
-    if (!item || !uiState.editMode) {
+    if (!item) {
       return;
     }
     const config = app.status.refs.getConfig();
@@ -161,16 +184,31 @@ export function createFilmstripController(deps: FilmstripControllerDeps) {
     if (!painting) {
       return;
     }
-    uiState.selectedPaintingId = painting.id;
-    renderFilmstrip();
+    clearPendingClick();
+    pendingClickTimer = window.setTimeout(() => {
+      pendingClickTimer = null;
+      uiState.selectedPaintingId = painting.id;
+      renderFilmstrip();
+      const entry = paintingRegistry.get(painting.id);
+      if (!entry) {
+        return;
+      }
+      closePaintingCard();
+      const viewPos = computePaintingViewPosition(entry.paintingSpot);
+      if (!viewPos) {
+        return;
+      }
+      moveVisitorTo(viewPos, entry.paintingSpot.center.clone());
+    }, CLICK_DELAY_MS);
   }
 
   function onFilmstripDoubleClick(event: MouseEvent) {
     const target = event.target as HTMLElement | null;
     const item = target?.closest(".filmstrip-item") as HTMLElement | null;
-    if (!item || !uiState.editMode) {
+    if (!item) {
       return;
     }
+    clearPendingClick();
     const config = app.status.refs.getConfig();
     const paintingId = item.dataset.paintingId;
     const painting = config.paintings.find((p: GalleryPainting) => p.id === paintingId);
@@ -181,11 +219,17 @@ export function createFilmstripController(deps: FilmstripControllerDeps) {
     renderFilmstrip();
     const entry = paintingRegistry.get(painting.id);
     if (entry) {
+      if (uiState.editMode) {
+        openPaintingCard(entry.paintingSpot);
+        showEditPanelForEntry(entry);
+        return;
+      }
       openPaintingCard(entry.paintingSpot);
-      showEditPanelForEntry(entry);
       return;
     }
-    openCatalogPainting(painting);
+    if (uiState.editMode) {
+      openCatalogPainting(painting);
+    }
   }
 
   function onFilmstripDragStart(event: DragEvent) {

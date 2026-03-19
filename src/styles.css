@@ -306,11 +306,19 @@ body,
 
 #config-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   margin-bottom: 8px;
+  align-items: flex-start;
 }
 
 .config-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-start;
+  flex: 0 0 auto;
+  min-height: 34px;
   border: 0;
   border-radius: 8px;
   background: rgba(148, 163, 184, 0.26);
@@ -318,6 +326,8 @@ body,
   font-size: 0.8rem;
   padding: 6px 10px;
   cursor: pointer;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .config-tab.active {
@@ -543,7 +553,8 @@ body,
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  align-items: center;
+  align-items: flex-start;
+  align-content: flex-start;
 }
 
 #config-gallery-light-toolbar {
@@ -554,6 +565,12 @@ body,
 }
 
 .config-map-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-start;
+  flex: 0 0 auto;
+  min-height: 34px;
   border: 0;
   border-radius: 8px;
   padding: 6px 10px;
@@ -561,6 +578,8 @@ body,
   background: rgba(148, 163, 184, 0.26);
   color: #0f172a;
   cursor: pointer;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .config-map-tool.active {
@@ -579,6 +598,12 @@ body,
 }
 
 .config-map-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-start;
+  flex: 0 0 auto;
+  min-height: 34px;
   border: 0;
   border-radius: 8px;
   padding: 6px 10px;
@@ -586,6 +611,8 @@ body,
   background: rgba(148, 163, 184, 0.26);
   color: #0f172a;
   cursor: pointer;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .config-map-toggle.active {
@@ -594,6 +621,12 @@ body,
 }
 
 .config-map-subtab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-start;
+  flex: 0 0 auto;
+  min-height: 34px;
   border: 0;
   border-radius: 8px;
   padding: 6px 10px;
@@ -601,6 +634,8 @@ body,
   background: rgba(15, 23, 42, 0.08);
   color: #0f172a;
   cursor: pointer;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .config-map-subtab.active {
@@ -909,11 +944,14 @@ body,
 #art-card.is-editing {
   display: grid;
   grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   grid-template-areas:
     "close close"
     "image editor";
   column-gap: 12px;
   row-gap: 8px;
+  align-items: start;
+  align-content: start;
 }
 
 #art-card.is-editing #art-card-close {
@@ -937,6 +975,8 @@ body,
   margin-top: 0;
   padding-top: 0;
   border-top: 0;
+  align-self: start;
+  justify-self: stretch;
 }
 
 #art-card-image.image-drop-target {
@@ -1040,11 +1080,18 @@ label[for="art-edit-image-url"] {
   border-top: 1px solid rgba(15, 23, 42, 0.1);
   display: grid;
   gap: 6px;
+  align-content: start;
+  align-items: start;
+  min-height: 0;
 }
 
 #art-edit-shell {
   display: grid;
+  grid-template-rows: 40px minmax(0, 1fr);
   gap: 8px;
+  align-content: start;
+  align-items: start;
+  min-height: 0;
 }
 
 #art-edit-shell[hidden] {
@@ -1053,12 +1100,22 @@ label[for="art-edit-image-url"] {
 
 #art-edit-tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+  min-height: 40px;
   padding-bottom: 4px;
   border-bottom: 1px solid rgba(15, 23, 42, 0.12);
+  align-items: flex-start;
+  align-content: flex-start;
 }
 
 .art-edit-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-start;
+  flex: 0 0 auto;
+  height: 36px;
   border: 0;
   border-radius: 8px;
   background: rgba(148, 163, 184, 0.22);
@@ -1066,6 +1123,8 @@ label[for="art-edit-image-url"] {
   font-size: 0.78rem;
   padding: 6px 10px;
   cursor: pointer;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .art-edit-tab.active {
@@ -1076,6 +1135,9 @@ label[for="art-edit-image-url"] {
 .art-edit-tab-panel {
   display: grid;
   gap: 6px;
+  align-content: start;
+  align-items: start;
+  min-height: 0;
 }
 
 .art-edit-tab-panel[hidden] {
