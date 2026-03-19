@@ -51,17 +51,21 @@ export function createRuntimeMotion({ THREE, camera, movement, visitor, MIN_PITC
   function computePaintingViewPosition(paintingSpot: PaintingSpot) {
     const verticalFov = THREE.MathUtils.degToRad(camera.fov);
     const horizontalFov = 2 * Math.atan(Math.tan(verticalFov * 0.5) * camera.aspect);
-    const fitDist = Math.max(
-      (paintingSpot.height * 0.5) / Math.tan(verticalFov * 0.5),
-      (paintingSpot.width * 0.5) / Math.tan(horizontalFov * 0.5)
-    );
-
-    const ideal = Math.max(visitor.minPaintingDistance + 0.45, fitDist * 1.35);
+    const halfHeight = paintingSpot.height * 0.5;
+    const halfWidth = paintingSpot.width * 0.5;
+    const topDelta = Math.abs((paintingSpot.center.y + halfHeight) - visitor.eyeHeight);
+    const bottomDelta = Math.abs((paintingSpot.center.y - halfHeight) - visitor.eyeHeight);
+    const verticalHalfSpanFromEye = Math.max(topDelta, bottomDelta, halfHeight);
+    const fitDistVertical = verticalHalfSpanFromEye / Math.tan(verticalFov * 0.5);
+    const fitDistHorizontal = halfWidth / Math.tan(horizontalFov * 0.5);
+    const fitDist = Math.max(fitDistVertical, fitDistHorizontal);
+    const frameMargin = 1.18;
+    const ideal = Math.max(visitor.minPaintingDistance + 0.2, fitDist * frameMargin);
     for (let extra = 0; extra <= 2.5; extra += 0.2) {
       const tryPos = paintingSpot.center
         .clone()
-        .add(paintingSpot.normal.clone().multiplyScalar(ideal + extra))
-        .setY(visitor.eyeHeight);
+        .add(paintingSpot.normal.clone().multiplyScalar(ideal + extra));
+      tryPos.y = visitor.eyeHeight;
       const clamped = clampToWalkable(tryPos);
       if (clamped) {
         return clamped;

@@ -279,6 +279,34 @@ export function createPaintingInteractions(deps: PaintingInteractionsDeps) {
     }
 
     onPaintingPicked?.(paintingId);
+    if (!isNearPainting(entry.paintingSpot)) {
+      closePaintingCard();
+      let viewPos: THREE_NS.Vector3 | null = null;
+      for (let extra = 0; extra <= 1.2; extra += 0.1) {
+        const tryPos = entry.paintingSpot.center
+          .clone()
+          .add(entry.paintingSpot.normal.clone().multiplyScalar(visitor.minPaintingDistance + extra))
+          .setY(visitor.eyeHeight);
+        const clamped = clampToWalkable(tryPos);
+        if (clamped) {
+          viewPos = clamped;
+          break;
+        }
+      }
+      if (!viewPos) {
+        viewPos = computePaintingViewPosition(entry.paintingSpot);
+      }
+      if (viewPos) {
+        moveVisitorTo(viewPos, entry.paintingSpot.center.clone());
+      } else {
+        movement.route = [];
+        movement.destination = null;
+        movement.finalDestination = null;
+        movement.focusTarget = entry.paintingSpot.center.clone();
+      }
+      app.status.refs.setSuppressNextPrimaryClick(true);
+      return true;
+    }
     dragPainting.active = true;
     dragPainting.pointerType = pointerType;
     dragPainting.paintingId = paintingId;
