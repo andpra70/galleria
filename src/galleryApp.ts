@@ -93,6 +93,7 @@ function must2d(canvasEl: HTMLCanvasElement): CanvasRenderingContext2D {
   return ctx;
 }
 
+const appShell = mustEl<HTMLElement>("app-shell");
 const canvas = mustEl<HTMLCanvasElement>("scene");
 const galleryPanel = mustEl<HTMLElement>("gallery-panel-container");
 const minimapCanvas = mustEl<HTMLCanvasElement>("minimap");
@@ -198,6 +199,9 @@ const configMapPaintingsShowRuler = mustEl<HTMLInputElement>("config-map-paintin
 const configMapPaintingsQuotaRulerCm = mustEl<HTMLInputElement>("config-map-paintings-quota-ruler-cm");
 const configMapPaintingsRulerColor = mustEl<HTMLInputElement>("config-map-paintings-ruler-color");
 const configVideoYoutubeUrl = mustEl<HTMLInputElement>("config-video-youtube-url");
+const configVideoPreviewLink = mustEl<HTMLAnchorElement>("config-video-preview-link");
+const configVideoPreviewNote = mustEl<HTMLElement>("config-video-preview-note");
+const configVideoPreviewFrame = mustEl<HTMLIFrameElement>("config-video-preview-frame");
 const configVideoDescriptionMd = mustEl<HTMLTextAreaElement>("config-video-description-md");
 const configGalleryMapEditor = mustEl<SVGSVGElement>("config-gallery-map-editor");
 const configGalleryMapSubTabButtons = Array.from(
@@ -351,6 +355,7 @@ type GalleryBootstrap = {
   routeId?: string | null;
   configPath?: string;
   readOnly?: boolean;
+  edit?: boolean;
 };
 
 let config!: ShowConfig;
@@ -513,7 +518,24 @@ const dragPainting: import("./gallery/appStatus").DragPaintingState = {
 };
 const galleryBootstrap = ((window as Window & { __GALLERIA_BOOTSTRAP__?: GalleryBootstrap }).__GALLERIA_BOOTSTRAP__ ??
   {}) as GalleryBootstrap;
-const readOnlyMode = Boolean(galleryBootstrap.readOnly);
+const urlSearchParams = new URLSearchParams(window.location.search);
+const urlQueryTokens = window.location.search.replace(/^\?/, "").split("&").map((token) => token.trim()).filter(Boolean);
+const requestedProjectFromUrl = (() => {
+  for (const token of urlQueryTokens) {
+    if (token.includes("=")) {
+      continue;
+    }
+    const decoded = decodeURIComponent(token.replace(/\+/g, " "));
+    const normalized = normalizeProjectName(decoded, "");
+    if (normalized) {
+      return normalized;
+    }
+  }
+  const projectParam = urlSearchParams.get("project") ?? urlSearchParams.get("show") ?? urlSearchParams.get("slug") ?? "";
+  return normalizeProjectName(projectParam, "");
+})();
+const showConfigPanel = urlSearchParams.get("edit") === "1" || galleryBootstrap.edit === true;
+const readOnlyMode = Boolean(galleryBootstrap.readOnly) && !showConfigPanel;
 const requestedConfigPath = (galleryBootstrap.configPath ?? "config/gallery.json").trim() || "config/gallery.json";
 
 const world = new THREE.Group();
@@ -969,14 +991,14 @@ async function fetchShowConfig(configPath: string) {
   return typed;
 }
 
-async function fetchStoredRemoteShowConfig() {
+async function fetchRemoteShowConfigByProjectName(projectName: string) {
   const apiBase = (import.meta.env.VITE_FILESERVER_API_BASE || "/fileserver/api").trim();
   const directory = (import.meta.env.VITE_FILESERVER_SHOW_DIRECTORY || "galleria").trim();
-  const storedProjectName = readStoredProjectName("");
-  if (!storedProjectName) {
+  const normalizedProjectName = normalizeProjectName(projectName, "");
+  if (!normalizedProjectName) {
     return null;
   }
-  const path = projectNameToFileserverPath(storedProjectName, directory);
+  const path = projectNameToFileserverPath(normalizedProjectName, directory);
   const client = createFileserverClient({ apiBase });
   try {
     const raw = await client.loadRawFileText(path);
@@ -985,17 +1007,24 @@ async function fetchStoredRemoteShowConfig() {
       return null;
     }
     const typed = loaded as ShowConfig;
-    typed.projectName = normalizeProjectName(typed.projectName, storedProjectName);
+    typed.projectName = normalizeProjectName(typed.projectName, normalizedProjectName);
     return typed;
   } catch (error) {
-    console.warn(`Impossibile ripristinare il progetto salvato ${path}`, error);
+    console.warn(`Impossibile caricare il progetto remoto ${path}`, error);
     return null;
   }
 }
 
+async function fetchStoredRemoteShowConfig() {
+  return fetchRemoteShowConfigByProjectName(readStoredProjectName(""));
+}
+
 async function init() {
   try {
-    config = (await fetchStoredRemoteShowConfig()) ?? (await fetchShowConfig(requestedConfigPath));
+    config =
+      (requestedProjectFromUrl ? await fetchRemoteShowConfigByProjectName(requestedProjectFromUrl) : null)
+      ?? (!requestedProjectFromUrl ? await fetchStoredRemoteShowConfig() : null)
+      ?? (await fetchShowConfig(requestedConfigPath));
   } catch (error) {
     if (requestedConfigPath !== "config/gallery.json") {
       console.warn(`Fallback a config/gallery.json dopo errore su ${requestedConfigPath}`, error);
@@ -1005,7 +1034,9 @@ async function init() {
     }
   }
 
-  config.projectName = persistProjectName(config.projectName ?? inferProjectNameFromFilePath(requestedConfigPath));
+  config.projectName = persistProjectName(
+    config.projectName ?? requestedProjectFromUrl ?? inferProjectNameFromFilePath(requestedConfigPath)
+  );
 
   applyVisitorConfig(config.visitor);
   buildWorld(config);
@@ -1013,7 +1044,8 @@ async function init() {
   attachArtEditTabs();
   attachConfigPanel();
   syncConfigPanelFromConfig();
-  setEditMode(false);
+  appShell.classList.toggle("hide-config", !showConfigPanel);
+  setEditMode(showConfigPanel);
   onResize();
 
   window.addEventListener("resize", onResize);
@@ -5250,6 +5282,63 @@ function buildGoogleStreetViewOpenUrl(lat: number, lng: number) {
   return url.toString();
 }
 
+function extractYouTubeVideoId(rawValue: string) {
+  const value = rawValue.trim();
+  if (!value) {
+    return "";
+  }
+  if (/^[a-zA-Z0-9_-]{11}$/.test(value)) {
+    return value;
+  }
+  try {
+    const url = new URL(value);
+    const host = url.hostname.replace(/^www\./i, "").toLowerCase();
+    if (host === "youtu.be") {
+      const candidate = url.pathname.split("/").filter(Boolean)[0] ?? "";
+      return /^[a-zA-Z0-9_-]{11}$/.test(candidate) ? candidate : "";
+    }
+    if (host === "youtube.com" || host.endsWith(".youtube.com")) {
+      const watchId = url.searchParams.get("v") ?? "";
+      if (/^[a-zA-Z0-9_-]{11}$/.test(watchId)) {
+        return watchId;
+      }
+      const pathParts = url.pathname.split("/").filter(Boolean);
+      const embeddedId = pathParts[pathParts.length - 1] ?? "";
+      return /^[a-zA-Z0-9_-]{11}$/.test(embeddedId) ? embeddedId : "";
+    }
+  } catch {
+    return "";
+  }
+  return "";
+}
+
+function buildYoutubeWatchUrl(videoId: string) {
+  return `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
+}
+
+function buildYoutubeEmbedUrl(videoId: string) {
+  return `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}`;
+}
+
+function syncVideoPreview() {
+  const rawUrl = configVideoYoutubeUrl.value.trim();
+  const videoId = extractYouTubeVideoId(rawUrl);
+  if (!videoId) {
+    configVideoPreviewLink.href = rawUrl || "#";
+    configVideoPreviewFrame.hidden = true;
+    configVideoPreviewFrame.removeAttribute("src");
+    configVideoPreviewNote.textContent = rawUrl
+      ? "Link YouTube non valido. Incolla un URL YouTube completo o un video id."
+      : "Incolla un link YouTube per vedere una piccola anteprima del video.";
+    return;
+  }
+  const watchUrl = buildYoutubeWatchUrl(videoId);
+  configVideoPreviewLink.href = watchUrl;
+  configVideoPreviewFrame.src = buildYoutubeEmbedUrl(videoId);
+  configVideoPreviewFrame.hidden = false;
+  configVideoPreviewNote.textContent = "Anteprima compatta del video YouTube selezionato.";
+}
+
 function syncWhereStreetViewPreview() {
   const { lat, lng } = resolveExhibitionLocation();
   configWhereStreetViewLink.href = buildGoogleStreetViewOpenUrl(lat, lng);
@@ -5568,6 +5657,7 @@ function syncConfigPanelFromConfig() {
   configMapPaintingsRulerColor.value = rulerColor;
   configVideoYoutubeUrl.value = exhibition.videoUrl ?? "";
   configVideoDescriptionMd.value = exhibition.videoDescriptionMd ?? "";
+  syncVideoPreview();
   configMapOpeningType.value = resolveOpeningType(firstOpening ?? {});
   configMapOpeningWidthCm.value = String(Math.round(getOpeningWidthM(firstOpening ?? {}) * CM_PER_M || 120));
   configMapOpeningBaseCm.value = String(Math.round(getOpeningBaseM(firstOpening ?? {}) * CM_PER_M || 0));
@@ -5752,6 +5842,7 @@ function attachConfigPanel() {
   configVideoYoutubeUrl.addEventListener("input", () => {
     const exhibition = ensureExhibitionConfig();
     exhibition.videoUrl = configVideoYoutubeUrl.value.trim() || undefined;
+    syncVideoPreview();
   });
   configVideoDescriptionMd.addEventListener("input", () => {
     const exhibition = ensureExhibitionConfig();

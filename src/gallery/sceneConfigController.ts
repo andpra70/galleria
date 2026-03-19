@@ -482,7 +482,7 @@ export function createSceneConfigController(deps: SceneConfigControllerDeps) {
     return value.trim();
   }
 
-  function parseCatalogDimensions(value: string): { heightCm: number; widthCm: number } | null {
+  function parseCatalogDimensions(value: string): { widthCm: number; heightCm: number } | null {
     const normalized = value.replace(/,/g, ".").trim();
     if (!normalized) {
       return null;
@@ -492,12 +492,12 @@ export function createSceneConfigController(deps: SceneConfigControllerDeps) {
       return null;
     }
 
-    const heightCm = Number(match[1]);
-    const widthCm = Number(match[2]);
-    if (!Number.isFinite(heightCm) || !Number.isFinite(widthCm) || heightCm <= 0 || widthCm <= 0) {
+    const widthCm = Number(match[1]);
+    const heightCm = Number(match[2]);
+    if (!Number.isFinite(widthCm) || !Number.isFinite(heightCm) || widthCm <= 0 || heightCm <= 0) {
       return null;
     }
-    return { heightCm, widthCm };
+    return { widthCm, heightCm };
   }
 
   function getCatalogWorks(payload: unknown): Array<Record<string, unknown>> {
@@ -577,7 +577,7 @@ export function createSceneConfigController(deps: SceneConfigControllerDeps) {
       const title = asNonEmptyString(work.title) || paintingId || `Opera ${index + 1}`;
       const rawDimensions = asNonEmptyString((work as { dimensioni?: unknown }).dimensioni) || asNonEmptyString(work.dimensions);
       const parsedDimensions = parseCatalogDimensions(rawDimensions);
-      const dimensionsLabel = parsedDimensions ? `${parsedDimensions.heightCm}x${parsedDimensions.widthCm} cm` : rawDimensions;
+      const dimensionsLabel = parsedDimensions ? `${parsedDimensions.widthCm}x${parsedDimensions.heightCm} cm` : rawDimensions;
       const synopsis = buildWorkSynopsis(work, dimensionsLabel);
       const summary = [
         asNonEmptyString(work.author),

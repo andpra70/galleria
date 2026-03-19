@@ -422,6 +422,22 @@ export function renderConfigPanel() {
                 <span>Link YouTube</span>
                 <input id="config-video-youtube-url" type="url" placeholder="https://www.youtube.com/watch?v=..." />
               </label>
+              <section id="config-video-preview-card" aria-label="Anteprima video YouTube">
+                <div class="config-inline-fields">
+                  <strong>Anteprima video</strong>
+                  <a id="config-video-preview-link" href="#" target="_blank" rel="noreferrer noopener">Apri su YouTube</a>
+                </div>
+                <p id="config-video-preview-note" class="config-map-snap"></p>
+                <iframe
+                  id="config-video-preview-frame"
+                  title="Anteprima video YouTube"
+                  loading="lazy"
+                  referrerpolicy="strict-origin-when-cross-origin"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  allowfullscreen
+                  hidden
+                ></iframe>
+              </section>
               <label class="config-field">
                 <span>Testo descrittivo (Markdown)</span>
                 <textarea id="config-video-description-md" rows="8" placeholder="## Video&#10;Descrizione, contesto, note..."></textarea>

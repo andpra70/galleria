@@ -55,8 +55,8 @@ export function parseImportedPaintingMetadata(fileName: string): ParsedImportedP
     title,
     year,
     technique,
-    widthCm: parseNumberToken(rawWidth),
-    heightCm: parseNumberToken(rawHeight),
+    widthCm: parseNumberToken(rawHeight),
+    heightCm: parseNumberToken(rawWidth),
   };
 }
 
