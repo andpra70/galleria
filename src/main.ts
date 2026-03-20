@@ -1,5 +1,6 @@
 import "./styles.css";
 import { renderAppShell } from "./components/appShell";
+import { createFileserverClient, extractFileserverFileNames } from "./gallery/fileserverClient";
 
 type GalleryUiFlags = {
   showConfig: boolean;
@@ -10,6 +11,12 @@ type GalleryBootstrap = {
   routeId: string | null;
   configPath: string;
   readOnly: boolean;
+};
+
+type ProjectListState = {
+  loading: boolean;
+  projects: string[];
+  error: string | null;
 };
 
 function parseFlag(raw: unknown): boolean | null {
@@ -171,29 +178,183 @@ function resolveBootstrapFromRoute(): GalleryBootstrap {
   };
 }
 
-const app = document.getElementById("app")!;
-const bootstrap = resolveBootstrapFromRoute();
-const uiFlags = resolveUiFlags(app);
-if (bootstrap.readOnly) {
-  uiFlags.showConfig = false;
-  uiFlags.showBirdview = false;
+function createProjectHref(routeId: string): string {
+  const appUrl = new URL(import.meta.env.BASE_URL || "/", document.baseURI);
+  const encodedQueryToken = encodeURIComponent(routeId);
+  const normalizedPath = appUrl.pathname || "/";
+  return `${normalizedPath}?${encodedQueryToken}`;
 }
-(window as Window & { __GALLERIA_BOOTSTRAP__?: GalleryBootstrap }).__GALLERIA_BOOTSTRAP__ = bootstrap;
-app.innerHTML = renderAppShell();
-const shell = app.querySelector<HTMLElement>("#app-shell");
-if (shell) {
-  shell.classList.toggle("hide-config", !uiFlags.showConfig);
-  shell.classList.toggle("hide-birdview", !uiFlags.showBirdview);
-  shell.dataset.showConfig = uiFlags.showConfig ? "1" : "0";
-  shell.dataset.showBirdview = uiFlags.showBirdview ? "1" : "0";
-  shell.dataset.readOnly = bootstrap.readOnly ? "1" : "0";
-  if (bootstrap.routeId) {
-    shell.dataset.routeId = bootstrap.routeId;
-  } else {
-    delete shell.dataset.routeId;
+
+function normalizeProjectIdFromFilename(filename: string): string {
+  return filename.replace(/\.json$/i, "").trim();
+}
+
+async function loadAvailableProjects(): Promise<string[]> {
+  const apiBase = (import.meta.env.VITE_FILESERVER_API_BASE || "/fileserver/api").trim();
+  const projectsDirectory = (import.meta.env.VITE_FILESERVER_SHOW_DIRECTORY || "galleria").trim();
+  const client = createFileserverClient({ apiBase });
+  const listing = await client.listDirectory(projectsDirectory);
+  return extractFileserverFileNames(listing)
+    .filter((fileName) => /\.json$/i.test(fileName))
+    .map((fileName) => normalizeProjectIdFromFilename(fileName))
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, "it", { sensitivity: "base" }));
+}
+
+function clearChildren(node: HTMLElement) {
+  while (node.firstChild) {
+    node.removeChild(node.firstChild);
   }
 }
 
-import("./galleryApp").catch((error) => {
-  console.error("Errore caricamento galleria:", error);
-});
+function renderProjectListPage(appEl: HTMLElement, state: ProjectListState) {
+  appEl.classList.add("project-bootstrap-page");
+  clearChildren(appEl);
+
+  const shell = document.createElement("section");
+  shell.className = "project-bootstrap-shell";
+  const title = document.createElement("h1");
+  title.textContent = "Progetti disponibili";
+  shell.appendChild(title);
+
+  const subtitle = document.createElement("p");
+  subtitle.className = "project-bootstrap-subtitle";
+  subtitle.textContent = "Seleziona un progetto per aprire la galleria.";
+  shell.appendChild(subtitle);
+
+  if (state.loading) {
+    const loading = document.createElement("p");
+    loading.className = "project-bootstrap-status";
+    loading.textContent = "Caricamento elenco progetti...";
+    shell.appendChild(loading);
+    appEl.appendChild(shell);
+    return;
+  }
+
+  if (state.error) {
+    const error = document.createElement("p");
+    error.className = "project-bootstrap-status project-bootstrap-error";
+    error.textContent = `Impossibile recuperare i progetti: ${state.error}`;
+    shell.appendChild(error);
+    appEl.appendChild(shell);
+    return;
+  }
+
+  if (state.projects.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "project-bootstrap-status";
+    empty.textContent = "Nessun progetto trovato sul fileserver.";
+    shell.appendChild(empty);
+    appEl.appendChild(shell);
+    return;
+  }
+
+  const list = document.createElement("ul");
+  list.className = "project-bootstrap-list";
+  state.projects.forEach((projectId) => {
+    const row = document.createElement("li");
+    const link = document.createElement("a");
+    link.href = createProjectHref(projectId);
+    link.textContent = projectId;
+    row.appendChild(link);
+    list.appendChild(row);
+  });
+  shell.appendChild(list);
+  appEl.appendChild(shell);
+}
+
+async function bootstrapProjectListPage(appEl: HTMLElement) {
+  renderProjectListPage(appEl, { loading: true, projects: [], error: null });
+  try {
+    const projects = await loadAvailableProjects();
+    renderProjectListPage(appEl, { loading: false, projects, error: null });
+  } catch (error) {
+    renderProjectListPage(appEl, {
+      loading: false,
+      projects: [],
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+
+function showProjectLoadingOverlay(appEl: HTMLElement, routeId: string) {
+  const existing = appEl.querySelector<HTMLElement>('#project-loading-overlay');
+  if (existing) {
+    const label = existing.querySelector<HTMLElement>('.project-loading-label');
+    if (label) {
+      label.textContent = `Loading... ${routeId}`;
+    }
+    return;
+  }
+
+  const overlay = document.createElement('div');
+  overlay.id = 'project-loading-overlay';
+  overlay.className = 'project-loading-overlay';
+  overlay.setAttribute('role', 'status');
+  overlay.setAttribute('aria-live', 'polite');
+
+  const label = document.createElement('div');
+  label.className = 'project-loading-label';
+  label.textContent = `Loading... ${routeId}`;
+  overlay.appendChild(label);
+
+  appEl.appendChild(overlay);
+}
+
+function hideProjectLoadingOverlay(appEl: HTMLElement) {
+  const overlay = appEl.querySelector<HTMLElement>('#project-loading-overlay');
+  if (!overlay) {
+    return;
+  }
+  overlay.classList.add('is-hidden');
+  window.setTimeout(() => {
+    overlay.remove();
+  }, 220);
+}
+const app = document.getElementById("app")!;
+const bootstrap = resolveBootstrapFromRoute();
+const uiFlags = resolveUiFlags(app);
+(window as Window & { __GALLERIA_BOOTSTRAP__?: GalleryBootstrap }).__GALLERIA_BOOTSTRAP__ = bootstrap;
+
+if (!bootstrap.routeId) {
+  bootstrapProjectListPage(app).catch((error) => {
+    console.error("Errore caricamento lista progetti:", error);
+  });
+} else {
+  app.classList.remove("project-bootstrap-page");
+  if (bootstrap.readOnly) {
+    uiFlags.showConfig = false;
+    uiFlags.showBirdview = false;
+  }
+
+  app.innerHTML = renderAppShell();
+  const shell = app.querySelector<HTMLElement>("#app-shell");
+  if (shell) {
+    shell.classList.toggle("hide-config", !uiFlags.showConfig);
+    shell.classList.toggle("hide-birdview", !uiFlags.showBirdview);
+    shell.dataset.showConfig = uiFlags.showConfig ? "1" : "0";
+    shell.dataset.showBirdview = uiFlags.showBirdview ? "1" : "0";
+    shell.dataset.readOnly = bootstrap.readOnly ? "1" : "0";
+    if (bootstrap.routeId) {
+      shell.dataset.routeId = bootstrap.routeId;
+    } else {
+      delete shell.dataset.routeId;
+    }
+  }
+
+  showProjectLoadingOverlay(app, bootstrap.routeId);
+  import("./galleryApp")
+    .then(() => {
+      window.requestAnimationFrame(() => {
+        hideProjectLoadingOverlay(app);
+      });
+    })
+    .catch((error) => {
+      console.error("Errore caricamento galleria:", error);
+      const overlayLabel = app.querySelector<HTMLElement>("#project-loading-overlay .project-loading-label");
+      if (overlayLabel) {
+        overlayLabel.textContent = "Errore caricamento progetto";
+      }
+    });
+}
