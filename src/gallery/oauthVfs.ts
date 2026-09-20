@@ -1,0 +1,3 @@
+declare global { interface Window { VfsAuth: any; VfsWidget: any; } }
+function load(src: string, key: "VfsAuth" | "VfsWidget") { if (window[key]) return Promise.resolve(); return new Promise<void>((resolve, reject) => { const script = document.createElement("script"); script.src = src; script.onload = () => resolve(); script.onerror = () => reject(new Error(`Impossibile caricare ${src}`)); document.head.appendChild(script); }); }
+export async function requireOAuthVfs() { await load("/auth/widget.js", "VfsAuth"); await load("/vfs/widget.js", "VfsWidget"); try { await window.VfsAuth.getAccessToken(); } catch { window.VfsAuth.login(); await new Promise(() => {}); } }

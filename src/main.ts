@@ -1,5 +1,8 @@
 import "./styles.css";
 import { renderAppShell } from "./components/appShell";
+import { requireOAuthVfs } from "./gallery/oauthVfs";
+
+await requireOAuthVfs();
 
 type GalleryUiFlags = {
   showConfig: boolean;
