@@ -5,5 +5,5 @@ services:
       dockerfile: Dockerfile
     container_name: galleria-virtuale
     ports:
-      - "6060:8080"
+      - "${HOST_PORT:-6060}:8080"
     restart: unless-stopped

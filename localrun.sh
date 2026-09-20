@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")"
+export GALLERIA_PROXY_TARGET="${GALLERIA_PROXY_TARGET:-https://belle.iliadboxos.it}"
+export VITE_PRODUCTION_SERVICES_URL="${VITE_PRODUCTION_SERVICES_URL:-$GALLERIA_PROXY_TARGET}"
 npm install
 npm run dev -- --host 0.0.0.0
