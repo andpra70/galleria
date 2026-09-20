@@ -1581,6 +1581,39 @@ label[for="art-edit-image-url"] {
   background: #fff1f2;
 }
 
+.project-bootstrap-empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.project-bootstrap-empty > div {
+  display: grid;
+  gap: 5px;
+}
+
+.project-bootstrap-empty span {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.project-bootstrap-create {
+  flex: 0 0 auto;
+  padding: 11px 18px;
+  border: 0;
+  border-radius: 8px;
+  background: #0f766e;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.project-bootstrap-create:hover:not(:disabled) { background: #115e59; }
+.project-bootstrap-create:disabled { cursor: wait; opacity: .7; }
+.project-bootstrap-create:focus-visible { outline: 3px solid #5eead4; outline-offset: 3px; }
+
 .project-bootstrap-list {
   margin: 0;
   padding: 0;
@@ -1602,6 +1635,11 @@ label[for="art-edit-image-url"] {
 .project-bootstrap-list a:hover {
   border-color: #0f766e;
   box-shadow: 0 4px 16px rgba(15, 118, 110, 0.14);
+}
+
+@media (max-width: 560px) {
+  .project-bootstrap-empty { align-items: stretch; flex-direction: column; }
+  .project-bootstrap-create { width: 100%; }
 }
 
 .project-loading-overlay {

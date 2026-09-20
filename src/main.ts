@@ -1,6 +1,8 @@
 import "./styles.css";
 import { renderAppShell } from "./components/appShell";
 import { requireOAuthVfs } from "./gallery/oauthVfs";
+import { INITIAL_GALLERY_PROJECT } from "./gallery/projectModels";
+import { resolveAppUrl } from "./gallery/url";
 
 await requireOAuthVfs();
 import { createFileserverClient, extractFileserverFileNames } from "./gallery/fileserverClient";
@@ -204,6 +206,31 @@ async function loadAvailableProjects(): Promise<string[]> {
     .sort((a, b) => a.localeCompare(b, "it", { sensitivity: "base" }));
 }
 
+async function createInitialProject(): Promise<void> {
+  const response = await fetch(resolveAppUrl(INITIAL_GALLERY_PROJECT.templatePath));
+  if (!response.ok) {
+    throw new Error(`Modello iniziale non disponibile (${response.status})`);
+  }
+  const template = await response.json() as Record<string, unknown>;
+  if (!Array.isArray(template.rooms) || !Array.isArray(template.paintings)) {
+    throw new Error("Il modello iniziale della galleria non è valido");
+  }
+
+  const apiBase = (import.meta.env.VITE_FILESERVER_API_BASE || "/fileserver/api").trim();
+  const projectsDirectory = (import.meta.env.VITE_FILESERVER_SHOW_DIRECTORY || INITIAL_GALLERY_PROJECT.directory).trim();
+  const client = createFileserverClient({ apiBase });
+  try {
+    await client.createFolder("", projectsDirectory);
+  } catch {
+    // La cartella può essere stata creata da un'altra sessione.
+  }
+  await client.uploadTextFile(
+    projectsDirectory,
+    `${INITIAL_GALLERY_PROJECT.id}.json`,
+    JSON.stringify({ ...template, projectName: INITIAL_GALLERY_PROJECT.name }, null, 2),
+  );
+}
+
 function clearChildren(node: HTMLElement) {
   while (node.firstChild) {
     node.removeChild(node.firstChild);
@@ -244,9 +271,33 @@ function renderProjectListPage(appEl: HTMLElement, state: ProjectListState) {
   }
 
   if (state.projects.length === 0) {
-    const empty = document.createElement("p");
-    empty.className = "project-bootstrap-status";
-    empty.textContent = "Nessun progetto trovato sul fileserver.";
+    const empty = document.createElement("div");
+    empty.className = "project-bootstrap-status project-bootstrap-empty";
+    const message = document.createElement("div");
+    const messageTitle = document.createElement("strong");
+    messageTitle.textContent = "Nessun progetto trovato sul fileserver.";
+    const messageHint = document.createElement("span");
+    messageHint.textContent = `Puoi creare ora il progetto iniziale “${INITIAL_GALLERY_PROJECT.name}”.`;
+    message.append(messageTitle, messageHint);
+
+    const createButton = document.createElement("button");
+    createButton.type = "button";
+    createButton.className = "project-bootstrap-create";
+    createButton.textContent = `Crea e apri “${INITIAL_GALLERY_PROJECT.name}”`;
+    createButton.addEventListener("click", async () => {
+      createButton.disabled = true;
+      createButton.textContent = "Creazione in corso…";
+      try {
+        await createInitialProject();
+        window.location.assign(createProjectHref(INITIAL_GALLERY_PROJECT.id));
+      } catch (error) {
+        createButton.disabled = false;
+        createButton.textContent = `Crea e apri “${INITIAL_GALLERY_PROJECT.name}”`;
+        messageHint.textContent = `Creazione fallita: ${error instanceof Error ? error.message : String(error)}`;
+        empty.classList.add("project-bootstrap-error");
+      }
+    });
+    empty.append(message, createButton);
     shell.appendChild(empty);
     appEl.appendChild(shell);
     return;
