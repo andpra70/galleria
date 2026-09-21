@@ -3,6 +3,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        VITE_APP_BASE: ${VITE_APP_BASE:-/galleria/}
     container_name: galleria-virtuale
     ports:
       - "${HOST_PORT:-6060}:8080"

@@ -13,7 +13,7 @@ export default defineConfig(({ mode }) => {
   };
 
   return {
-    base: "./",
+    base: env.VITE_APP_BASE || "/",
     build: { target: "esnext" },
     preview: {
       host: "0.0.0.0",
