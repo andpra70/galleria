@@ -2,14 +2,17 @@ import { defineConfig, loadEnv, type ProxyOptions } from "vite";
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
-  const productionServicesUrl = env.GALLERIA_PROXY_TARGET || "https://belle.iliadboxos.it";
+  const productionServicesUrl = env.GALLERIA_PROXY_TARGET || "https://127.0.0.1:8443";
+  const productionServicesHost = env.VITE_BACKEND_HOST || "belle.iliadboxos.it";
+  const verifyProxyCertificate = env.GALLERIA_PROXY_SECURE === "true";
   const productionProxy: ProxyOptions = {
     target: productionServicesUrl,
     changeOrigin: true,
-    secure: true,
+    secure: verifyProxyCertificate,
     xfwd: true,
     cookieDomainRewrite: "",
     autoRewrite: true,
+    headers: { host: productionServicesHost },
   };
 
   return {

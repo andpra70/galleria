@@ -746,6 +746,7 @@ const { buildRoom, buildCustomWalls } = createWorldBuilder({
   getRoomWallThickness: () => Math.max(0.02, Number(config?.rendering?.wallThickness ?? 0.16)),
   getRulerConfig: () => ({
     enabled: Boolean(config?.rendering?.showRuler),
+    visible: uiState.editMode,
     quotaM: cmToM(Math.max(0, Number(config?.rendering?.quotaRulerCm ?? 150))),
     color: normalizeColorInputValue(config?.rendering?.rulerColor, "#d3d3d3"),
   }),
@@ -1777,6 +1778,11 @@ function setEditMode(enabled: boolean) {
   editModeToggle.disabled = readOnlyMode;
   editModeToggle.title = readOnlyMode ? "Modalita sola lettura" : "";
   filmstrip.hidden = !uiState.editMode;
+  world.traverse((object) => {
+    if (object.userData.isRuler === true) {
+      object.visible = uiState.editMode;
+    }
+  });
   updateEditModeVisuals();
   if (uiState.editMode) {
     renderFilmstrip();

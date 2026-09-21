@@ -28,7 +28,7 @@ type WorldBuilderDeps = {
   wallColliders: THREE_NS.Box3[];
   cmToM: (cm: number) => number;
   getRoomWallThickness: () => number;
-  getRulerConfig: () => { enabled: boolean; quotaM: number; color: THREE_NS.ColorRepresentation };
+  getRulerConfig: () => { enabled: boolean; visible: boolean; quotaM: number; color: THREE_NS.ColorRepresentation };
 };
 
 const WALL_MATCH_EPS = 0.001;
@@ -271,6 +271,8 @@ export function createWorldBuilder({ THREE, world, floorMeshes, wallMeshes, wall
       depthWrite: false,
     });
     const line = new THREE.Line(geometry, material);
+    line.userData.isRuler = true;
+    line.visible = rulerCfg.visible;
     line.computeLineDistances();
     world.add(line);
   }

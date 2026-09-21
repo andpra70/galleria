@@ -227,8 +227,7 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
     return path;
   }
 
-  async function loadShowFromFileserver() {
-    const path = getFileserverShowPath();
+  async function loadShowFromFileserver(path: string) {
     const client = createShowFileserverClient();
     let rawText: string;
     try {
@@ -603,16 +602,23 @@ export function createInputEventHandlers(deps: InputEventHandlersDeps) {
 
   async function onLoadLocalShow() {
     try {
-      const loaded = await loadShowFromFileserver();
-      if (!loaded) {
+      const selection = await window.VfsWidget.open(`private:${DEFAULT_FILESERVER_SHOW_DIRECTORY}`, {
+        mode: "file",
+        accept: [".json"],
+      }) as { volume?: string; type?: string; path?: string } | null;
+      if (!selection) {
         return;
       }
+      if (selection.volume !== "private" || selection.type !== "file" || !selection.path) {
+        throw new Error("Selezione progetto non valida");
+      }
+      const loaded = await loadShowFromFileserver(selection.path);
       if (!app.helpers.isValidShowConfig(loaded)) {
         return;
       }
       loadShowConfig(loaded);
       syncConfigPanel();
-      showToast(`Mostra caricata da fileserver:\n${projectNameToFileserverPath(normalizeProjectName(loaded.projectName), DEFAULT_FILESERVER_SHOW_DIRECTORY)}`, "success");
+      showToast(`Mostra caricata da fileserver:\n${selection.path}`, "success");
     } catch (error) {
       console.error("Errore caricamento fileserver:", error);
       showToast(`Caricamento fileserver fallito.\n${error instanceof Error ? error.message : String(error)}`, "error");
