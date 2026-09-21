@@ -11,6 +11,8 @@ export function renderConfigPanel() {
             </label>
             <button id="config-save-local" type="button" role="menuitem" title="Salva mostra.json sul fileserver">Salva</button>
             <button id="config-load-local" type="button" role="menuitem" title="Carica mostra.json dal fileserver">Carica</button>
+            <button id="config-publish" type="button" role="menuitem" title="Pubblica la mostra">Pubblica</button>
+            <button id="config-unpublish" type="button" role="menuitem" title="Ritira la mostra pubblicata">Ritira pubblicazione</button>
             <button id="config-export-json" type="button" role="menuitem" title="Esporta mostra.json">Esporta JSON</button>
             <button id="config-import-json" type="button" role="menuitem" title="Importa mostra.json">Importa JSON</button>
             <button id="config-import-catalog-json" type="button" role="menuitem" title="Importa catalogo.json da file locale">Importa catalogo JSON</button>

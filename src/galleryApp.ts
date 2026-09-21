@@ -37,6 +37,7 @@ import {
   inferProjectNameFromFilePath,
   normalizeProjectName,
   persistProjectName,
+  projectNameToSlug,
   projectNameToFileserverPath,
   readStoredProjectName,
 } from "./gallery/projectName";
@@ -102,6 +103,8 @@ const miniCtx = must2d(minimapCanvas);
 const configPanel = mustEl<HTMLDivElement>("config-panel");
 const configEditorShell = mustEl<HTMLElement>("config-editor-shell");
 const configSaveLocalBtn = mustEl<HTMLButtonElement>("config-save-local");
+const configPublishBtn = mustEl<HTMLButtonElement>("config-publish");
+const configUnpublishBtn = mustEl<HTMLButtonElement>("config-unpublish");
 const configLoadLocalBtn = mustEl<HTMLButtonElement>("config-load-local");
 const configExportJsonBtn = mustEl<HTMLButtonElement>("config-export-json");
 const configImportJsonBtn = mustEl<HTMLButtonElement>("config-import-json");
@@ -6723,6 +6726,29 @@ function attachInput() {
       onCardImageDrop: paintingEditorHandlers.onCardImageDrop,
     }
   );
+  configPublishBtn.addEventListener("click", async () => {
+    const slug = projectNameToSlug(config.projectName || "galleria");
+    const sourcePath = `galleria/publish/${slug}`;
+    try {
+      for (const directory of ["galleria/publish", sourcePath]) {
+        try { await window.VfsWidget.mkdir(directory); } catch { /* directory already present */ }
+      }
+      await window.VfsWidget.salvaFileTesto(`${sourcePath}/project.json`, JSON.stringify(config, null, 2), "application/json");
+      await window.VfsWidget.publish(sourcePath, `galleria/${slug}`);
+      window.alert(`Mostra pubblicata: /galleria/pub/${slug}`);
+    } catch (error) {
+      window.alert(`Pubblicazione fallita: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  });
+  configUnpublishBtn.addEventListener("click", async () => {
+    const slug = projectNameToSlug(config.projectName || "galleria");
+    try {
+      await window.VfsWidget.unpublish(`galleria/${slug}`);
+      window.alert("Pubblicazione ritirata");
+    } catch (error) {
+      window.alert(`Ritiro pubblicazione fallito: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  });
   const dispatchAudioSelectionChange = () => {
     artEditAudioSelect.dispatchEvent(new Event("change", { bubbles: true }));
   };

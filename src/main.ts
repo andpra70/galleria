@@ -4,7 +4,8 @@ import { requireOAuthVfs } from "./gallery/oauthVfs";
 import { INITIAL_GALLERY_PROJECT } from "./gallery/projectModels";
 import { resolveAppUrl } from "./gallery/url";
 
-await requireOAuthVfs();
+const publicRouteMatch = window.location.pathname.match(/\/galleria\/pub\/([^/]+)\/?$/i);
+if (!publicRouteMatch) await requireOAuthVfs();
 import { createFileserverClient, extractFileserverFileNames } from "./gallery/fileserverClient";
 
 type GalleryUiFlags = {
@@ -157,6 +158,14 @@ function encodeRouteIdAsPath(routeId: string): string {
 }
 
 function resolveBootstrapFromRoute(): GalleryBootstrap {
+  if (publicRouteMatch?.[1]) {
+    const slug = decodeURIComponent(publicRouteMatch[1]);
+    return {
+      routeId: slug,
+      configPath: new URL(`/vfs/public/galleria/${encodeURIComponent(slug)}/project.json`, window.location.origin).toString(),
+      readOnly: true,
+    };
+  }
   const relativePath = stripBaseFromPath(window.location.pathname);
   const segments = relativePath
     .split("/")
